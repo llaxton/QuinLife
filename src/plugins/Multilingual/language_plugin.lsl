@@ -5,10 +5,10 @@
  It responds to the LANGUAGE-CHECK command from the language manager.
 **/
 
-float VERSION = 2.0;  // Beta  17 November 2020
-integer RSTATE = 0;   // RSTATE: 1=release, 0=beta, -1=RC
+float VERSION = 2.0;  // Beta  29 November 2020
+integer RSTATE = -1;  // RSTATE: 1=release, 0=beta, -1=RC
 
-integer DEBUGMODE = TRUE;
+integer DEBUGMODE = FALSE;
 debug(string text)
 {
     if (DEBUGMODE == TRUE) llOwnerSay("DEBUG:" + llToUpper(llGetScriptName()) + " " + text);

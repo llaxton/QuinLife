@@ -20,7 +20,7 @@ debug(string text)
     if (DEBUGMODE == TRUE) llOwnerSay("DEBUG:" + llToUpper(llGetScriptName()) + " " + text);
 }
 
-float VERSION = 5.0;		// 3 November 2020
+float VERSION = 5.0;		// 27 November 2020
 
 string PASSWORD = "*";
 string  languageCode = "";      // use defaults below unless language config notecard present

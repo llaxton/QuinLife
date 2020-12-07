@@ -10,8 +10,8 @@ Storage - stores single or multiple products. The script scans its inventory to 
 It uses the linked prims with the same name to set text with the status of each product. E.g. for SF Olives the linked prim named
 "Olives" is used to show the text about the current level of SF Olives.
 **/
-float   VERSION = 5.2;   // Beta 11 November 2020
-integer RSTATE  = 0;     // RSTATE: 1=release, 0=beta, -1=RC
+float   VERSION = 5.2;   // 28 November 2020
+integer RSTATE  = 1;     // RSTATE: 1=release, 0=beta, -1=RC
 
 integer DEBUGMODE = FALSE;
 debug(string text)
@@ -73,6 +73,11 @@ string  SUFFIX = "S1";
 string  PASSWORD="*";
 integer FARM_CHANNEL = -911201;
 string  STORAGENC = "storagenc";
+
+vector ORANGE = <1.000, 0.522, 0.106>;
+vector YELLOW = <1.000, 0.863, 0.000>;
+vector GREEN =     <0.180, 0.800, 0.251>;
+vector AQUA = <0.224, 0.800, 0.800>;
 
 //0 = never reset
 //1 = reset when UUID doesn't metch
@@ -436,18 +441,17 @@ refresh(integer didChange)
                 //method one: show status of specific products on linked prims
                 if (llGetLinkName(lnk) == product)
                 {
-                    // has an indocator prim so remove from list of no prim products
+                    // has an indicator prim so remove from list of no prim products
                     primFound = TRUE;
                     noPrimProducts = llDeleteSubList(noPrimProducts, i, i);
                     found++;
                     // Set the colour
-                    c = <0.6, 1.0, 0.6>;
-                    if (lev < 10)
-                        c = <1,0,0>;
-                    else  if (lev<50)
-                        c = <1,1,0>;
-                    else if (lev>95)
-                        c =  <0.224, 0.80, 0.80>;
+                    c = GREEN;
+                    // Get level as a percent for colour coding
+                    float adjLevel = lev*100/maxFill;
+                         if (adjLevel < 10) c = ORANGE;
+                    else if (adjLevel < 40) c = YELLOW;
+                    else if (adjLevel > 95) c =  AQUA;
                     pstate = llGetLinkPrimitiveParams(lnk, [PRIM_POS_LOCAL, PRIM_DESC]);
                     p = llList2Vector(pstate, 0);
                     desc = llParseStringKeepNulls(llList2String(pstate, 1), [","], []);

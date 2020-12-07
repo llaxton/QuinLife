@@ -1,19 +1,29 @@
 // ossl_check.lsl
 //  Checks the avialability of the OSSL functions needed for SatyrFarm
-//   Version 3.0    27 October 2020
+//   Version 3.1    20 November 2020
 
 string TXT_ALL_GOOD = "All okay";
 string TXT_NOT_GOOD = "ISSUES\nFOUND";
 string TXT_ISSUES = "== FUNCTIONS WITH PERMISSION ISSUES ==";
 string TXT_MAIN = "Problem with these esssential functions:";
+string TXT_ASK_NPC = "Check NPC functions?";
+string TXT_YES = "Yes";
+string TXT_NO = "No";
 
 integer WhichProbeFunction; // to tell us which function we're probing
 integer NumberOfFunctionsToCheck; // how many functions are we probing?
-key npcKey;
+key     npcKey;
+key     thisAvatar;
+key     boxOwner;
+integer msgChan = -28651;
+integer msgListen;
 integer chkMain;
 integer chkNPC;
 integer chkBaby;
-list FunctionNames = ["osMakeNotecard", "osGetNotecard", "osMessageObject", "osSetDynamicTextureDataBlendFace", "osSetSpeed", "osAgentSaveAppearance", "osNpcMoveToTarget", "osNpcStopMoveToTarget", "osNpcGetPos", "osNpcPlayAnimation", "osNpcStopAnimation", "osNpcWhisper", "osNpcSay", "osNpcCreate", "osNpcRemove", "osNpcTouch", "osNpcSetProfileAbout", "osNpcSetProfileImage", "osDropAttachment"];
+string  floatMsg = "";
+list    FunctionNames = ["osMakeNotecard", "osGetNotecard", "osMessageObject", "osSetDynamicTextureDataBlendFace",
+"osSetSpeed", "osAgentSaveAppearance", "osNpcMoveToTarget", "osNpcStopMoveToTarget", "osNpcGetPos", "osNpcPlayAnimation", "osNpcStopAnimation", "osNpcWhisper", "osNpcSay", "osNpcCreate", "osNpcRemove", "osNpcTouch", "osNpcSetProfileAbout", "osNpcSetProfileImage",
+ "osDropAttachment"];
 
 // 0 to 3 ARE NEEDED FOR ALL  4 to 17 ARE NEEDED FOR NPC FARMER    18 NEEDED FOR BABY
 
@@ -39,6 +49,38 @@ setText(string msg)
     osSetDynamicTextureDataBlendFace("", "vector", commandList, "width:256,height:256", FALSE, 2, 0, 255, ALL_SIDES);
 }
 
+integer listener=-1;
+integer listenTs;
+
+integer chan(key u)
+{
+    return -1 - (integer)("0x" + llGetSubString( (string) u, -6, -1) )-393;
+}
+
+startListen()
+{
+    if (listener<0)
+    {
+        listener = llListen(chan(llGetKey()), "", "", "");
+    }
+    listenTs = llGetUnixTime();
+}
+
+checkListen(integer force)
+{
+    if ((listener > 0 && llGetUnixTime() - listenTs > 300) || force)
+    {
+        llListenRemove(listener);
+        listener = -1;
+        llSetTimerEvent(0);
+    }
+}
+
+doSay(string msg)
+{
+    if (osIsNpc(thisAvatar) == FALSE) llRegionSayTo(thisAvatar, 0, msg); else llRegionSay(msgChan, msg);
+}
+
 // The default state uses the timer to call all the OSSL functions we're interested in using, in turn.
 // If the function call fails, the timer event handler will abend, but the script doesn't crash. We can
 // use this fact to check all of our desired functions in turn, and then pass control to the Running
@@ -57,10 +99,12 @@ default
         llSetTextureAnim(ANIM_ON | SMOOTH | ROTATE | LOOP, ALL_SIDES,1,1,0, 4.0, 2.1);
         llSetColor(<1.000, 0.863, 0.000>, ALL_SIDES);
         llSetText("",ZERO_VECTOR,0);
-        llRequestPermissions(llGetOwner(), PERMISSION_ATTACH);
+        thisAvatar = llGetOwner();
+        if (osIsNpc(thisAvatar) == FALSE) boxOwner = llGetOwner();
+    //    if (osIsNpc(thisAvatar) == FALSE) llRequestPermissions(llGetOwner(), PERMISSION_ATTACH);
         if (llGetInventoryType("bogus") == INVENTORY_NOTECARD) llRemoveInventory("bogus");
-        llOwnerSay( "Probing OSSL functions to see what we can use" );
-        NumberOfFunctionsToCheck = llGetListLength( FunctionNames );
+        doSay("Probing OSSL functions to see what we can use");
+        NumberOfFunctionsToCheck = llGetListLength( FunctionNames);
         WhichProbeFunction = -1;
         llSetTimerEvent( 0.25 ); // check only four functions a second, just to be nice.
     }
@@ -81,7 +125,7 @@ default
             llSetTimerEvent( 0.0 ); // stop the timer
             state Running; // switch to the Running state
         }
-        llOwnerSay( "Checking function " + llList2String( FunctionNames, WhichProbeFunction )); // say status
+        doSay("Checking function " + llList2String( FunctionNames, WhichProbeFunction )); // say status
         // osMakeNotecard"
         if (WhichProbeFunction == 0)
         {
@@ -110,17 +154,27 @@ default
         // osNpcCreate
         else if (WhichProbeFunction == 13)
         {
-            npcKey = osNpcCreate("Test", "NPC", llGetPos(), "npc-test");
+            if (osIsNpc(thisAvatar) == FALSE) npcKey = osNpcCreate("Test", "NPC", llGetPos(), "npc-test"); else npcKey = thisAvatar;
+        }
+        // osNpcSetProfileAbout
+        else if (WhichProbeFunction == 16)
+        {
+            osNpcSetProfileAbout(npcKey, "I'm a test NPC");
+        }
+        // osNpcSetProfileImage
+        else if (WhichProbeFunction == 17)
+        {
+            osNpcSetProfileImage(npcKey, "TEXTURE_PLYWOOD");
         }
         // osSetSpeed
         else if (WhichProbeFunction == 4)
         {
-          osSetSpeed(BogusKey, 1);
+          osSetSpeed(npcKey, 1);
         }
         // osDropAttachment
         else if (WhichProbeFunction == 18)
         {
-            osDropAttachment();
+            //if (osIsNpc(thisAvatar) == FALSE) osDropAttachment();
         }
         // osNpcMoveToTarget
         else if (WhichProbeFunction == 6)
@@ -140,37 +194,27 @@ default
         // osNpcPlayAnimation
         else if (WhichProbeFunction == 9)
         {
-            osNpcPlayAnimation(npcKey, "stand");
+            osNpcPlayAnimation(npcKey, "flip");
         }
         // osNpcStopAnimation
         else if (WhichProbeFunction == 10)
         {
-            osNpcStopAnimation(npcKey, "stand");
+            osNpcStopAnimation(npcKey, "flip");
         }
         // osNpcWhisper
         else if (WhichProbeFunction == 11)
         {
-            osNpcWhisper(npcKey, 1, "testing");
+            osNpcWhisper(npcKey, 1, "Testing 'Whisper'");
         }
         // osNpcSay
         else if (WhichProbeFunction == 12)
         {
-            osNpcSay(npcKey, 1, "testing");
+            osNpcSay(npcKey, 1, "Testing 'Say'");
         }
         // osNpcTouch
         else if (WhichProbeFunction == 15)
         {
             osNpcTouch(npcKey, (key)BogusKey, 0);
-        }
-        // osNpcSetProfileAbout
-        else if (WhichProbeFunction == 16)
-        {
-            osNpcSetProfileAbout(npcKey, "I'm a test NPC");
-        }
-        // osNpcSetProfileImage
-        else if (WhichProbeFunction == 17)
-        {
-            osNpcSetProfileImage(npcKey, "TEXTURE_PLYWOOD");
         }
         // osNpcRemove
         else if (WhichProbeFunction == 14)
@@ -183,6 +227,7 @@ default
     }
 
 }
+
 //
 
 state Running
@@ -192,11 +237,11 @@ state Running
         llResetScript();
     }
 
-     state_entry()
-     {
+    state_entry()
+    {
         llSetTextureAnim(FALSE, ALL_SIDES, 0, 0, 0.0, 0.0, 1.0);
+        llListen(msgChan, "", "", "");
         // 0 to 3 ARE NEEDED FOR ALL  4 to 17 ARE NEEDED FOR NPC FARMER    18 NEEDED FOR BABY
-    //    chkMain = TRUE;
         chkNPC = TRUE;
         chkBaby = TRUE;
         chkMain = TRUE;
@@ -243,21 +288,67 @@ state Running
         }
 
         string info;
-
+        key avatarID = llGetOwner();
         if (canDo == llGetListLength(FunctionNames))
         {
-            llOwnerSay("\n----------------------\n" +TXT_ALL_GOOD +"\n----------------------\n");
-            llSetText(TXT_ALL_GOOD+"\n", <1,1,1>, 1);
+            if (osIsNpc(avatarID) == FALSE)
+            {
+                llOwnerSay("\n----------------------\n" +TXT_ALL_GOOD +"\n----------------------\n");
+                floatMsg = TXT_ALL_GOOD;
+                llSetText(floatMsg+"\n", <1,1,1>, 1);
+            }
+            else
+            {
+                llRegionSay(msgChan+1, TXT_ALL_GOOD);
+            }
             setText(TXT_ALL_GOOD);
             llSetColor(<0,1,0>, ALL_SIDES);
         }
         else
         {
-            llOwnerSay("\n----------------------\n" +TXT_ISSUES +"----------------------\n \n" +statusMsg +"\n---------------------------------------------\n");
-            llSetText(TXT_ISSUES+":\n \n\t" +floatTxt, <1,1,1>, 1.0);
+            if (osIsNpc(avatarID) == FALSE)
+            {
+                llOwnerSay("\n----------------------\n" +TXT_ISSUES +"----------------------\n \n" +statusMsg +"\n---------------------------------------------\n");
+                floatMsg = TXT_ISSUES+":\n \n\t" +floatTxt;
+                llSetText(floatMsg, <1,1,1>, 1.0);
+            }
+            else
+            {
+                llRegionSay(msgChan+1, TXT_ISSUES+":\n" +floatTxt);
+            }
             setText(TXT_NOT_GOOD);
             llSetColor(<1,0,0>, ALL_SIDES);
         }
+        // Now ask if they want to check NPC
+        if (osIsNpc(avatarID) == FALSE)
+        {
+            startListen();
+            llSetTimerEvent(180);
+            llDialog(llGetOwner(), TXT_ASK_NPC, [TXT_YES, TXT_NO], chan(llGetKey()));
+        }
+    }
+
+    listen(integer channel, string name, key id, string message)
+    {
+        if (channel == msgChan)
+        {
+            llOwnerSay(message);
+        }
+        else if (channel == msgChan+1)
+        {
+            llOwnerSay(floatMsg +"\n" +"NPC Results: "+message);
+            llSetText(floatMsg +"\n" +"NPC Results: "+message, <0.0, 1.0, 0.5>, 1.0);
+        }
+        else if (message == TXT_YES)
+        {
+            npcKey = osNpcCreate("Farmer", "Test", llGetPos(), "npc-ossl_test", 8); // 8 = OS_NPC_GROUP
+        }
+        else checkListen(TRUE);
+    }
+
+    timer()
+    {
+        checkListen(FALSE);
     }
 
     on_rez(integer start_param)

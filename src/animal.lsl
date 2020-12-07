@@ -17,8 +17,8 @@
 // Mods by Cnayl Rainbow, hg.osgrid.org:80:Aquino
 //
 // NOTE: Versions before 4.1 can't be easily upgraded to version 5 due to all sorts of hardware differences
-float    VERSION = 5.6;    // Beta    14 November 2020
-integer  RSTATE  = 0;      // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
+float    VERSION = 5.6;    // RC    5 December 2020
+integer  RSTATE  = -1;     // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 //
 integer DEBUGMODE = FALSE;
 debug(string text)
@@ -250,6 +250,7 @@ integer  habitat;
 integer  lifeFactor = 25;
 float    scaleFactor = 1.0;
 integer  isPet;
+integer  feedPet;
 integer  isAttached = FALSE;
 rotation savedRot = ZERO_ROTATION;
 vector   savedPos = ZERO_VECTOR;
@@ -261,6 +262,7 @@ integer  hudDetected;
 integer  energy =-1;
 integer  upgradeFlag = 0;
 integer  upgradeHold;
+integer  sleeping = FALSE;
 
 
 integer chan(key u)
@@ -289,6 +291,12 @@ checkListen()
     }
 }
 
+messageObj(key objId, string msg)
+{
+    list check = llGetObjectDetails(objId, [OBJECT_NAME]);
+    if (llList2String(check, 0) != "") osMessageObject(objId, msg);
+}
+
 setConfig(string str)
 {
     list tok = llParseString2List(str, ["="], []);
@@ -296,7 +304,6 @@ setConfig(string str)
     {
         string cmd=llStringTrim(llList2String(tok, 0), STRING_TRIM);
         string val=llStringTrim(llList2String(tok, 1), STRING_TRIM);
-        //llOwnerSay(cmd+"="+val);
              if (cmd == "NAME") AN_NAME = val;
         else if (cmd == "SURFACE") SURFACE = llToLower(val);
         else if (cmd == "CHATTY") CHATTY = (integer)val;
@@ -512,91 +519,113 @@ loadLanguage(string langCode)
 
 saveState()
 {
-    integer scode = 0;
-    if (sex == "Female") scode = 1;
-    string codedDesc = (string)scode+";"+(string)llRound(water)+";"+(string)llRound(food)+";"+(string)createdTs+";"+(string)chan(llGetKey())+";"+(string)geneA+";"+(string)geneB+";"+(string)fatherGene+";"+(string)pregnantTs+";"+name+";";
-    // as of version 5.5 onwards adds -   version;radius;surface;chatty;language;givenBirth;epoch;labelType;initpos;scaleFactor;AN_AUTO_POO;savedRot;savedPos;
-    codedDesc += (string)(llRound(VERSION*10))+";" +(string)RADIUS+";" +SURFACE+";" +(string)CHATTY+";" +languageCode+";" +(string)givenBirth+";" +(string)epoch+";" +(string)labelType+";" +(string)initpos+";" +qsFloat2String(scaleFactor, 2, FALSE) +";" +(string)AN_AUTO_POO +";" +(string)savedRot +";" +(string)savedPos;
-    //
-    if (isPet == TRUE) codedDesc = "X;"+codedDesc; else codedDesc = "A;"+codedDesc;
-    //
-    if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+    // Do not attempt to save notecard if we are in process of doing a 'restore'
+    if (status != "waitStatusNC")
     {
-        if (llGetInventoryType(statusNC+"-OLD") == INVENTORY_NOTECARD) llRemoveInventory(statusNC+"-OLD");
-        string tmpStr = osGetNotecard(statusNC);
-        osMakeNotecard(statusNC+"-OLD", tmpStr);
-        llSleep(0.2);
-        llRemoveInventory(statusNC);
+        integer scode = 0;
+        if (sex == "Female") scode = 1;
+        string codedDesc = (string)scode+";"+(string)llRound(water)+";"+(string)llRound(food)+";"+(string)createdTs+";"+(string)chan(llGetKey())+";"+(string)geneA+";"+(string)geneB+";"+(string)fatherGene+";"+(string)pregnantTs+";"+name+";";
+        // as of version 5.5 onwards adds -   version;radius;surface;chatty;language;givenBirth;epoch;labelType;initpos;scaleFactor;AN_AUTO_POO;savedRot;savedPos;SLEEP_MODE;feedPet
+        codedDesc += (string)(llRound(VERSION*10))+";" +(string)RADIUS+";" +SURFACE+";" +(string)CHATTY+";" +languageCode+";" +(string)givenBirth+";" +(string)epoch+";" +(string)labelType+";" +(string)initpos+";" +qsFloat2String(scaleFactor, 2, FALSE) +";" +(string)AN_AUTO_POO +";" +(string)savedRot +";" +(string)savedPos +";" +(string)SLEEP_MODE +";" +(string)feedPet;
+        //
+        if (isPet == TRUE) codedDesc = "X;"+codedDesc; else codedDesc = "A;"+codedDesc;
+        //
+        if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+        {
+            if (llGetInventoryType(statusNC+"-OLD") == INVENTORY_NOTECARD) llRemoveInventory(statusNC+"-OLD");
+            string tmpStr = osGetNotecard(statusNC);
+            osMakeNotecard(statusNC+"-OLD", tmpStr);
+            llSleep(0.2);
+            llRemoveInventory(statusNC);
+        }
+        // save to notecard
+        osMakeNotecard(statusNC, codedDesc);
+        // also save to description for legacy support
+        if (isHuman == FALSE) llSetObjectDesc(codedDesc);
     }
-    // save to notecard
-    osMakeNotecard(statusNC, codedDesc);
-    // also save to description for legacy support
-    if (isHuman == FALSE) llSetObjectDesc(codedDesc);
 }
 
 loadState()
 {
-    list desc = [];
-    // first try notecard
-    if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+    // Do not attempt to load notecard if we are in process of doing a 'restore'
+    if (status != "waitStatusNC")
     {
-        desc = llParseStringKeepNulls(osGetNotecardLine(statusNC, 0), [";"], []);
-    }
-    else
-    {
-        // as backup try description
-        if (isHuman == FALSE) desc = llParseStringKeepNulls(llGetObjectDesc(), [";"], []);
-    }
-    if ((llList2String(desc, 0) == "A") || (llList2String(desc, 0) == "X"))
-    {
-        if (llList2String(desc, 0) == "X") isPet = TRUE; else isPet = FALSE;
-        //
-        if ((llList2String(desc, 5) != (string)chan(llGetKey())) && (isPet == FALSE) && (isHuman == FALSE)) //Also resets eggs!
+        list desc = [];
+        // first try notecard
+        if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
         {
-            llOwnerSay(TXT_RESETTING);
-            llSetObjectDesc("");
-            llSleep(1.0);
+            desc = llParseStringKeepNulls(osGetNotecardLine(statusNC, 0), [";"], []);
         }
         else
         {
-            if (llList2Integer(desc,1) == 1) sex = "Female"; else sex = "Male";
-            water = llList2Integer(desc, 2);
-            food  = llList2Integer(desc, 3);
-            epoch = 1; // Assume child
-            createdTs = llList2Integer(desc, 4);
-            geneA = llList2Integer(desc, 6);
-            geneB = llList2Integer(desc, 7);
-            fatherGene = llList2Integer(desc, 8);
-            pregnantTs = llList2Integer(desc, 9);
-            name = llList2String(desc, 10);
-            // optional newer items so see if there is a version number stored next
-            if (llList2Integer(desc, 11) != 0)
+            // as backup try description
+            if (isHuman == FALSE) desc = llParseStringKeepNulls(llGetObjectDesc(), [";"], []);
+        }
+        //
+        if ((llList2String(desc, 0) == "A") || (llList2String(desc, 0) == "X"))
+        {
+            if (llList2String(desc, 0) == "X") isPet = TRUE; else isPet = FALSE;
+            //
+            if ((llList2String(desc, 5) != (string)chan(llGetKey())) && (isPet == FALSE) && (isHuman == FALSE)) //Also resets eggs!
             {
-                RADIUS  = llList2Integer(desc, 12);
-                SURFACE = llList2String(desc, 13);
-                CHATTY  = llList2Integer(desc, 14);
-                languageCode = llList2String(desc, 15);
-                if (llList2Vector(desc, 19) != ZERO_VECTOR)
+                llOwnerSay(TXT_RESETTING);
+                llSetObjectDesc("");
+                llSleep(1.0);
+            }
+            else
+            {
+                if (llList2Integer(desc,1) == 1) sex = "Female"; else sex = "Male";
+                water = llList2Integer(desc, 2);
+                food  = llList2Integer(desc, 3);
+                epoch = 1; // Assume child
+                createdTs = llList2Integer(desc, 4);
+                geneA = llList2Integer(desc, 6);
+                geneB = llList2Integer(desc, 7);
+                fatherGene = llList2Integer(desc, 8);
+                pregnantTs = llList2Integer(desc, 9);
+                name = llList2String(desc, 10);
+                // optional newer items so see if there is a version number stored next
+                if (llList2Integer(desc, 11) != 0)
                 {
-                    givenBirth = llList2Integer(desc, 16);
-                    epoch = llList2Integer(desc, 17);
-                    labelType = llList2Integer(desc, 18);
-                    initpos = llList2Vector(desc, 19);
-                    scaleFactor = llList2Float(desc, 20);
-                    AN_AUTO_POO = llList2Integer(desc, 21);
-                    savedRot = llList2Rot(desc, 22);
-                    savedPos = llList2Vector(desc, 23);
+                    RADIUS  = llList2Integer(desc, 12);
+                    SURFACE = llList2String(desc, 13);
+                    CHATTY  = llList2Integer(desc, 14);
+                    languageCode = llList2String(desc, 15);
+                    if (llList2Vector(desc, 19) != ZERO_VECTOR)
+                    {
+                        givenBirth = llList2Integer(desc, 16);
+                        epoch = llList2Integer(desc, 17);
+                        labelType = llList2Integer(desc, 18);
+                        initpos = llList2Vector(desc, 19);
+                        scaleFactor = llList2Float(desc, 20);
+                        AN_AUTO_POO = llList2Integer(desc, 21);
+                        savedRot = llList2Rot(desc, 22);
+                        savedPos = llList2Vector(desc, 23);
+                        SLEEP_MODE = llList2Integer(desc, 24);
+                        feedPet = llList2Integer(desc, 25);
+                    }
                 }
             }
         }
+        else
+        {
+            saveState();
+        }
+        // Check for invalid values
+        if (RADIUS == 0) RADIUS = 10;
+        if (scaleFactor == 0.0) scaleFactor = 1.0;
     }
-    else
+}
+
+backupNC()
+{
+    if (llGetInventoryType(statusNC+"-OLD") == INVENTORY_NOTECARD)
     {
-        saveState();
+        llRemoveInventory(statusNC+"-OLD");
+        llSleep(0.2);
     }
-    // Check for invalid values
-    if (RADIUS == 0) RADIUS = 10;
-    if (scaleFactor == 0.0) scaleFactor = 1.0;
+    string tmpStr = osGetNotecard(statusNC);
+    osMakeNotecard(statusNC+"-OLD", tmpStr);
 }
 
 setGenes()
@@ -795,6 +824,7 @@ showAlphaSet(integer newEpoch)
             setAlphaByName("adult_male_prim", 1.);
             setAlphaByName("adult_female_prim", 0.);
         }
+        llMessageLinked(LINK_SET, 1, "IS_ADULT", "");
     }
 }
 
@@ -818,26 +848,33 @@ setPose(list pose)
 
 move()
 {
-    if (epoch != 0)
+    if ((qlDayCheck() == TRUE) || (SLEEP_MODE == FALSE))
     {
-        integer rnd = (integer)llFrand(5);
-             if (rnd == 0)      setPose(rest);
-        else if (rnd == 1)      setPose(down);
-        else if (rnd == 2)      setPose(eat);
-        else if ((IMMOBILE <= 0) && (blockMove == FALSE))
+        if (epoch != 0)
         {
-            isMoving = 7;
-            moveAngle = 0.3-llFrand(0.6);
-            llSetTimerEvent(0.5);
+            integer rnd = (integer)llFrand(5);
+                 if (rnd == 0)      setPose(rest);
+            else if (rnd == 1)      setPose(down);
+            else if (rnd == 2)      setPose(eat);
+            else if ((IMMOBILE <= 0) && (blockMove == FALSE))
+            {
+                isMoving = 7;
+                moveAngle = 0.3-llFrand(0.6);
+                llSetTimerEvent(0.5);
+            }
+            if (isHuman == TRUE)
+            {
+                if (llFrand(1.0)> 0.75) baah();
+            }
+            else
+            {
+                if (llFrand(1.0)< 0.5) baah();
+            }
         }
-        if (isHuman == TRUE)
-        {
-            if (llFrand(1.0)> 0.75) baah();
-        }
-        else
-        {
-            if (llFrand(1.0)< 0.5) baah();
-        }
+    }
+    else
+    {
+        setPose(down);
     }
 }
 
@@ -890,7 +927,7 @@ refresh()
         return;
     }
 
-    if (isPet == FALSE)
+    if ((isPet == FALSE) || (isPet == TRUE && feedPet == TRUE))
     {
         food  -= (ts - lastTs) * (100.0/FEEDTIME);
         water -= (ts - lastTs) * (100.0/WATERTIME); // water consumption rate
@@ -917,13 +954,13 @@ refresh()
     if (isPet == TRUE) str += TXT_PET +" ";
     str += name;
     string strShort = name;
+    string humanStr = name;
     vector color = WHITE;
 
-    if ((isHuman == FALSE) && (isPet == FALSE))
+    if (isHuman == FALSE)
     {
         if (sex == "Female")
         {
-
             str += " [" +TXT_FEMALE_SYMBOL +"] \n";
             strShort += " [" +TXT_FEMALE_SYMBOL +"] \n";
         }
@@ -954,11 +991,16 @@ refresh()
      else if (food < 0) say( 0,AN_BAAH+", " +TXT_HUNGER, NULL_KEY);
       else if (water < 0) say( 0, AN_BAAH+", " +TXT_THIRST, NULL_KEY);
 
-    if (isPet == FALSE) str += ""+(string)((integer)days)+" " + TXT_DAYS_OLD + " ";
+    if (isPet == FALSE)
+    {
+        str += "\n"+(string)((integer)days)+" " + TXT_DAYS_OLD + " ";
+        humanStr += "\n"+(string)((integer)days)+" " + TXT_DAYS_OLD + " ";
+    }
     if ((epoch == 1) && (isPet == FALSE))
     {
-        str += " (" +TXT_CHILD +")\n";
-        strShort += " (" +TXT_CHILD +")";
+             str += " (" +TXT_CHILD +")\n";
+        strShort += " (" +TXT_CHILD +")\n";
+        humanStr += " (" +TXT_CHILD +")\n";
     }
     else
     {
@@ -989,7 +1031,11 @@ refresh()
                 if (AN_HASWOOL)
                 {
                     str += TXT_WOOL + ": "+(string)((integer)p)+"%\n";
-                    if (p >99) strShort += "\n" + TXT_WOOL_READY;
+                    if (p >99)
+                    {
+                        strShort += "\n" + TXT_WOOL_READY;
+                        humanStr += "\n" + TXT_WOOL_READY;
+                    }
                 }
                 // MANURE OBJECT STATUS
                 p = 100.*(ts - manureTs)/MANURETIME;
@@ -1006,6 +1052,7 @@ refresh()
                         else
                         {
                             strShort += "\n" + TXT_MANURE_READY;
+                            humanStr += "\n" + TXT_MANURE_READY;
                         }
                     }
                 }
@@ -1116,26 +1163,19 @@ refresh()
         }
         else
         {
-            str = name;
-            if (isPet == FALSE)
-            {
-                if (epoch == 1) str += " (" +TXT_CHILD +")";
-                if (labelType == 0) str += "\n"+(string)((integer)days)+" " + TXT_DAYS_OLD;
-            }
-
             if (RSTATE == 0)
             {
                 str += "\n-B-";
-                strShort += "\n-B-";
+                humanStr += "\n-B-";
                 tmpStr = "-B-";
             }
             else if (RSTATE == -1)
             {
                 str += "\n-RC-";
-                strShort += "\n-RC-";
+                humanStr += "\n-RC-";
                 tmpStr = "-RC-";
             }
-            if (labelType == 2) llSetText(tmpStr, BLACK, 0.5); else llSetText(str, PURPLE, 1.0);
+            if (labelType == 2) llSetText(tmpStr, BLACK, 0.5); else if (labelType == 1) llSetText(humanStr, PURPLE, 1.0); else llSetText(str, PURPLE, 1.0);
         }
         if (isAttached == TRUE)
         {
@@ -1154,10 +1194,17 @@ list getNC(string ncname)
 
 integer qlDayCheck()
 {
+    integer result;
     // Check with lsl functions if sun above or below horizon
     vector sun=llGetSunDirection();
     float time = sun.z;
-    if (llRound(sun.z) == 1) return 1; else return 0;
+    if (llRound(sun.z) == 1) result = 1; else result = 0;
+    if (result == sleeping)  // transition over from sleep to wake and vice versa
+    {
+        sleeping = !sleeping;
+        if (sleeping == TRUE) llMessageLinked(LINK_SET, 1, "EXPRESSION|SLEEP", ""); else llMessageLinked(LINK_SET, 1, "EXPRESSION|WAKE", "");
+    }
+    return result;
 }
 
 string qsFloat2String ( float num, integer places, integer rnd)
@@ -1241,7 +1288,7 @@ doTouch(key toucher)
     {
         llRegionSayTo(toucher, 0, TXT_GREET_EGG);
     }
-    else if ((toucher = llGetOwner()) || (llSameGroup(toucher) == TRUE) || (osIsNpc(toucher) == TRUE))
+    else if ((toucher == llGetOwner()) || (llSameGroup(toucher) == TRUE) || (osIsNpc(toucher) == TRUE))
     {
         lastUser = toucher;
         hudDetected = FALSE;
@@ -1262,7 +1309,7 @@ doTouch(key toucher)
         opts += [TXT_PET, TXT_INFO,  TXT_OPTIONS, TXT_LANGUAGE, TXT_CLOSE];
 
        integer ts = llGetUnixTime();
-       if (sex == "Female" && epoch == 2)
+       if ((sex == "Female" && epoch == 2) && (isHuman == FALSE))
        {
            if ( (LAYS_EGG==1 && ts> lastEggTs+MATE_INTERVAL) || (LAYS_EGG==0&& pregnantTs ==0) )
                opts +=  TXT_MATE;
@@ -1408,16 +1455,16 @@ default
             llGiveInventory(id, "product");
             llRemoteLoadScriptPin(id, "animal", 999, TRUE, 0);
             llSleep(1);
-            osMessageObject(id, "INIT|"+PASSWORD+"|"+babyParams+"|"+languageCode+"|"+SURFACE+"|"+(string)CHATTY+"|"+(string)labelType+"|"+(string)RADIUS);
+            messageObj(id, "INIT|"+PASSWORD+"|"+babyParams+"|"+languageCode+"|"+SURFACE+"|"+(string)CHATTY+"|"+(string)labelType+"|"+(string)RADIUS);
         }
         else
         {
-            osMessageObject(id, "INIT|"+PASSWORD);
+            messageObj(id, "INIT|"+PASSWORD);
             if (llKey2Name(id) == MEAT_OBJECT) deathFlags = deathFlags|2;
             if (llKey2Name(id) == SKIN_OBJECT) deathFlags = deathFlags|4;
             if ((MEAT_OBJECT=="" || (deathFlags&2)) && (SKIN_OBJECT=="" || (deathFlags&4)))
             {
-                llSetTimerEvent(0);
+                llSetTimerEvent(0);status = "waitStatusNC";
                 if (deathFlags&1)
                 {
                     llSetRot(llEuler2Rot(<PI/2,0,0>));
@@ -1502,7 +1549,7 @@ default
 
                         if (llVecDist(v, initpos)< RADIUS)
                         {
-                            if (isMoving%2==0) setPose(walkl); else setPose(walkr);
+                            if (isMoving == 0) setPose(walkl); else setPose(walkr);
                             llSetPrimitiveParams([PRIM_POSITION, v, PRIM_ROTATION, llGetRot()*llEuler2Rot(<0,0,moveAngle>) ]);
                             debug("okay to move");
                         }
@@ -1529,7 +1576,9 @@ default
                 {
                     vector size = llGetAgentSize(followUser);
                     vector mypos = llGetPos();
-                    vector v = llList2Vector(userData, 1)+<0.3, 1.5, -size.z/2-0.1> * llList2Rot(userData,2);
+llOwnerSay("size.z="+(string)size.z);
+                    vector v = llList2Vector(userData, 1) + <0.3, 1.5, -size.z/2-0.1> * llList2Rot(userData,2);
+
                     float d = llVecDist(mypos, v);
                     if (d>2)
                     {
@@ -1672,7 +1721,18 @@ default
         else if ((m == "-"+TXT_SLEEP_MODE) || (m == "+"+TXT_SLEEP_MODE))
         {
             SLEEP_MODE = !SLEEP_MODE;
-            if (SLEEP_MODE == TRUE) llRegionSayTo(id, 0, TXT_SLEEP_MODE +": " +TXT_ON); else llRegionSayTo(id, 0, TXT_SLEEP_MODE +": " +TXT_OFF);
+
+            if (SLEEP_MODE == TRUE)
+            {
+                llRegionSayTo(id, 0, TXT_SLEEP_MODE +": " +TXT_ON);
+                if (qlDayCheck() == FALSE) llMessageLinked(LINK_SET, 1, "EXPRESSION|SLEEP", ""); else llMessageLinked(LINK_SET, 1, "EXPRESSION|WAKE", "");
+            }
+            else
+            {
+                llRegionSayTo(id, 0, TXT_SLEEP_MODE +": " +TXT_OFF);
+                llMessageLinked(LINK_SET, 1, "EXPRESSION|WAKE", "");
+                sleeping = TRUE;
+            }
             showOptionsMenu(id);
         }
         else if (m == TXT_FLAT || m == TXT_GROUND || m == TXT_WATER )
@@ -1890,15 +1950,63 @@ default
                         answer += item + ",";
                     }
                 }
-                answer += me;
-                osMessageObject(llList2Key(tk, 2), answer);
+                answer += statusNC+"|" +me;
+                messageObj(llList2Key(tk, 2), answer);
+            }
+            if (cmd == "SEND-STATUSNC")
+            {
+                if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+                {
+                    backupNC();
+                    llGiveInventory(llList2Key(tk, 2), statusNC);
+                    llSleep(0.1);
+                    messageObj(llList2Key(tk, 2), "STATUSNC-SENT|"+PASSWORD+"|"+llGetObjectDesc() +"|" +(string)savedRot +"|" +(string)savedPos);
+                }
+            }
+            else if (cmd == "KILL-STATUSNC")
+            {
+                backupNC();
+                if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+                {
+                    llRemoveInventory(statusNC);
+                    llSleep(0.2);
+                }
+                status = "waitStatusNC";
+                messageObj(llList2Key(tk, 2), "STATUSNC-DEAD|"+PASSWORD+"|"+llGetKey());
+            }
+            else if (cmd == "GET-STATUSNC")
+            {
+                string count = ".";
+                do
+                {
+                    llSetText("", PINK, 1.0);
+                    llSleep(1.0);
+                    count += ".";
+                }
+                while (llGetInventoryType(statusNC) != INVENTORY_NOTECARD);
+                //
+                llSetText("---", PINK, 1.0);
+                llSetObjectDesc(llList2String(tk, 2));
+                llSleep(1.0);
+                savedRot = llList2Rot(tk, 3);
+                savedPos = llList2Vector(tk, 4);
+                if (isAttached == TRUE)
+                {
+                    llSetRot(savedRot);
+                    llSetPos(savedPos);
+                }
+                llSleep(0.5);
+                llMessageLinked(LINK_SET, 1, "reset", "");
+                llSleep(0.5);
+                llSetText("", ZERO_VECTOR, 0.0);
+                llResetScript();
             }
             else if (cmd == "STATS-CHECK")
             {
                 string answer = "STATS-REPLY|" + PASSWORD + "|";
                 // answer += sex|happy|food|water
                 answer += sex + "|" + (string)happy + "|" + (string)food + "|" + (string)water + "|";
-                osMessageObject(llList2Key(tk, 2), answer);
+                messageObj(llList2Key(tk, 2), answer);
                 seeMe();
                 if (happy <0) llSetColor(<1,0,0>, ALL_SIDES);
             }
@@ -1927,7 +2035,7 @@ default
                 }
                 integer pin = llRound(llFrand(1000.0));
                 llSetRemoteScriptAccessPin(pin);
-                osMessageObject(llList2Key(tk, 2), "DO-UPDATE-REPLY|"+PASSWORD+"|"+(string)llGetKey()+"|"+(string)pin+"|"+sRemoveItems);
+                messageObj(llList2Key(tk, 2), "DO-UPDATE-REPLY|"+PASSWORD+"|"+(string)llGetKey()+"|"+(string)pin+"|"+sRemoveItems);
                 if (delSelf)
                 {
                     llOwnerSay(TXT_UPDATE_REMOVE);
@@ -2000,7 +2108,7 @@ default
                     hearts();
                     llSleep(8);
                     llParticleSystem([]);
-                    osMessageObject(partner, "BABY|"+PASSWORD+"|"+(string)llGetKey() +"|"+ (string)geneA + "|"+ (string)geneB+ "|" +name);
+                    messageObj(partner, "BABY|"+PASSWORD+"|"+(string)llGetKey() +"|"+ (string)geneA + "|"+ (string)geneB+ "|" +name);
                     happy=100;
             }
             else if (cmd  == "BABY") //Female part
@@ -2062,6 +2170,7 @@ default
             }
             else if (cmd == "PETIFY")
             {
+                //     (aniID, cmd+"|"+PASSWORD+"|"+(string)FORCE_ADULT+"|"+(string)requireFeeding);
                 llSetColor(GREEN, ALL_SIDES);
                 llSetAlpha(1.0, ALL_SIDES);
                 isPet = TRUE;
@@ -2071,6 +2180,7 @@ default
                     if (age > lifeTime) age = lifeTime - 172800; // take off 2 days
                     showAlphaSet(epoch);
                 }
+                if (llList2Integer(tk, 3) == 1) feedPet = TRUE; else feedPet = FALSE;
                 saveState();
                 llSleep(2.0);
                 refresh();
@@ -2086,7 +2196,7 @@ default
                 refresh();
                 llSetAlpha(0.0, ALL_SIDES);
             }
-
+            //
             if ((food > 50) && (water > 50)) happy = 100.0;
         }
     }
@@ -2109,7 +2219,7 @@ default
                 if ((llList2Integer(desc,1) == 0) && (llList2Integer(desc, 17) == 2))
                 {
                     llSetTimerEvent(15); // dont move
-                    osMessageObject(id,  "MATEME|"+PASSWORD+"|"+(string)llGetKey());
+                    messageObj(id,  "MATEME|"+PASSWORD+"|"+(string)llGetKey());
                     foundCheck = TRUE;
                     i = n;
                 }
@@ -2151,14 +2261,14 @@ default
             if (food < 5 && length)
             {
                 key rand_feeder = llList2Key(enough_food, llFloor(llFrand(length)));
-                osMessageObject(rand_feeder, "FEEDME|"+PASSWORD+"|"+ llGetKey() + "|" + (string)FEEDAMOUNT);
+                messageObj(rand_feeder, "FEEDME|"+PASSWORD+"|"+ llGetKey() + "|" + (string)FEEDAMOUNT);
             }
 
             length = llGetListLength(enough_water);
             if (water < 5 && length)
             {
                 key rand_feeder = llList2Key(enough_water, llFloor(llFrand(length)));
-                osMessageObject(rand_feeder, "WATERME|"+PASSWORD+"|"+ (string)llGetKey() + "|"+ (string)WATERAMOUNT);
+                messageObj(rand_feeder, "WATERME|"+PASSWORD+"|"+ (string)llGetKey() + "|"+ (string)WATERAMOUNT);
             }
         }
     }
@@ -2200,7 +2310,6 @@ default
             blockMove = num;
             refresh();
         }
-
         else if (cmd == "SAVE_POS")
         {
             llOwnerSay("SAVE_POS");
@@ -2211,7 +2320,6 @@ default
             "SAVE_ROT";
             //savedRot = llList2Rot(tk, 1);
         }
-
     }
 
     attach(key id)
@@ -2222,6 +2330,7 @@ default
             isAttached = TRUE;
             llSetRot(savedRot);
             llSetPos(savedPos);
+            llMessageLinked(LINK_SET, 0, "FORCE_SLEEP", "");
             refresh();
         }
         else

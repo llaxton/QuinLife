@@ -1,7 +1,7 @@
 // petify.lsl
 
-float   VERSION = 1.2;    // Beta 13 November 2020
-integer RSTATE  = 0;      // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
+float   VERSION = 1.2;    // RC 27 November 2020
+integer RSTATE  = -1;     // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 //
 integer DEBUGMODE = TRUE;    // Set this if you want to force startup in debug mode
@@ -14,13 +14,20 @@ debug(string text)
 // config notecard can overide the following:
 integer FORCE_ADULT = 1;             // FORCE_ADULT=1
 integer scanRange = 10;              // SENSOR_DISTANCE=10
+integer requireFeeding = FALSE;      // NEED_FOOD=NO
 string  SF_PREFIX = "SF";            // SF_PREFIX=SF
 string  languageCode = "en-GB";      // LANG=en-GB
 //
 
 // Multilingual support
-string TXT_CLOSE="CLOSE";
-string TXT_SELECT="Select";
+string TXT_CLOSE = "CLOSE";
+string TXT_SELECT = "Select";
+string TXT_OPTIONS = "Options";
+string TXT_RANGE = "Range";
+string TXT_FORCE_ADULT = "Force adult";
+string TXT_NEED_FOOD = "Require food";
+string TXT_ON = "ON";
+string TXT_OFF = "OFF";
 string TXT_TRYING="Trying";
 string TXT_NOT_FOUND="Not found";
 string TXT_INFO="Animal/Pet converter";
@@ -82,6 +89,10 @@ loadConfig()
                 val = llStringTrim(llList2String(tok, 1), STRING_TRIM);
                      if (cmd == "SENSOR_DISTANCE") scanRange = (integer)val;
                 else if (cmd == "FORCE_ADULT") FORCE_ADULT = (integer)val;
+                else if (cmd == "NEED_FOOD")
+                {
+                    if (llToUpper(val) == "YES") requireFeeding = TRUE; else requireFeeding = FALSE;
+                }
                 else if (cmd == "SF_PREFIX") SF_PREFIX = val;
                 else if (cmd == "LANG") languageCode = val;
             }
@@ -112,12 +123,18 @@ loadLanguage(string langCode)
                     // Now check for language translations
                          if (cmd == "TXT_CLOSE")  TXT_CLOSE = val;
                     else if (cmd == "TXT_SELECT") TXT_SELECT = val;
+                    else if (cmd == "TXT_OPTIONS") TXT_OPTIONS = val;
                     else if (cmd == "TXT_TRYING") TXT_TRYING = val;
                     else if (cmd == "TXT_NOT_FOUND") TXT_NOT_FOUND = val;
                     else if (cmd == "TXT_INFO") TXT_INFO = val;
                     else if (cmd == "TXT_PETIFY") TXT_PETIFY = val;
                     else if (cmd == "TXT_DEPETIFY") TXT_DEPETIFY = val;
                     else if (cmd == "TXT_CAUTION") TXT_CAUTION = val;
+                    else if (cmd == "TXT_RANGE") TXT_RANGE = val;
+                    else if (cmd == "TXT_FORCE_ADULT") TXT_FORCE_ADULT = val;
+                    else if (cmd == "TXT_NEED_FOOD") TXT_NEED_FOOD = val;
+                    else if (cmd == "TXT_OFF") TXT_OFF = val;
+                    else if (cmd == "TXT_ON") TXT_ON = val;
                     else if (cmd == "TXT_LANGUAGE") TXT_LANGUAGE = val;
                 }
             }
@@ -171,6 +188,14 @@ psys(key k)
                 ]);
 }
 
+string setInfoText()
+{
+    string result = TXT_RANGE +": " +(string)scanRange +"m\t" +TXT_FORCE_ADULT +": ";
+    if (FORCE_ADULT == TRUE) result += TXT_ON; else result += TXT_OFF;
+    result += "\t" +TXT_NEED_FOOD +": ";
+    if (requireFeeding == TRUE) result += TXT_ON; else result += TXT_OFF;
+    return result;
+}
 
 default
 {
@@ -194,6 +219,34 @@ default
             llListenRemove(listener);
             listener = -1;
         }
+        else if (message == TXT_OPTIONS)
+        {
+            list buttons = [TXT_RANGE, TXT_FORCE_ADULT, TXT_NEED_FOOD, TXT_CLOSE];
+            listener=-1;
+            startListen();
+            llDialog(userID, "\n("+setInfoText()+")\n \n"+TXT_OPTIONS, buttons, chan(llGetKey()));
+        }
+        else if (message == TXT_RANGE)
+        {
+            llTextBox(userID, TXT_RANGE, chan(llGetKey()));
+            status = "waitRange";
+        }
+        else if (message == TXT_FORCE_ADULT)
+        {
+            FORCE_ADULT = !FORCE_ADULT;
+            if (FORCE_ADULT) llOwnerSay(TXT_FORCE_ADULT +" "+TXT_ON); else llOwnerSay(TXT_FORCE_ADULT +" "+TXT_OFF);
+            listener=-1;
+            startListen();
+            llDialog(userID, "\n("+setInfoText()+")\n \n"+TXT_SELECT, [TXT_PETIFY, TXT_DEPETIFY, TXT_OPTIONS, TXT_LANGUAGE, TXT_CLOSE], chan(llGetKey()));
+        }
+        else if (message == TXT_NEED_FOOD)
+        {
+            requireFeeding = !requireFeeding;
+            if (requireFeeding) llOwnerSay(TXT_NEED_FOOD +" "+TXT_ON); else llOwnerSay(TXT_NEED_FOOD +" "+TXT_OFF);
+            listener=-1;
+            startListen();
+            llDialog(userID, "\n("+setInfoText()+")\n \n"+TXT_SELECT, [TXT_PETIFY, TXT_DEPETIFY, TXT_OPTIONS, TXT_LANGUAGE, TXT_CLOSE], chan(llGetKey()));
+        }
         else if (message == TXT_LANGUAGE)
         {
             llMessageLinked(LINK_THIS, 1, "LANG_MENU|" + languageCode, id);
@@ -205,6 +258,14 @@ default
             if (message == TXT_PETIFY) status = "waitScanP"; else status = "waitScanD";
             llSensor("", "", SCRIPTED, scanRange, PI);
             llSetText("...", <0.0, 1.0, 0.2>, 1.0);
+        }
+        else if (status == "waitRange")
+        {
+            scanRange = (integer)message;
+            if (scanRange < 1) scanRange = 1;
+            listener=-1;
+            startListen();
+            llDialog(userID, "\n("+setInfoText()+")\n \n"+TXT_SELECT, [TXT_PETIFY, TXT_DEPETIFY, TXT_OPTIONS, TXT_LANGUAGE, TXT_CLOSE], chan(llGetKey()));
         }
         else if ((status == "waitSelectA") || (status == "waitSelectX"))
         {
@@ -219,7 +280,7 @@ default
                 psys(aniID);
                 llSleep(1.0);
                 llSetTextureAnim(ANIM_ON | SMOOTH | ROTATE | LOOP, 3, 1, 1, 0, TWO_PI, 2.0);
-                osMessageObject(aniID, cmd+"|"+PASSWORD+"|"+(string)FORCE_ADULT);
+                osMessageObject(aniID, cmd+"|"+PASSWORD+"|"+(string)FORCE_ADULT+"|"+(string)requireFeeding);
                 llSleep(1.5);
                 llSetTextureAnim(ANIM_ON | SMOOTH | ROTATE | LOOP, 4, 1, 1, 0, TWO_PI, 2.0);
                 llSleep(1.5);
@@ -238,7 +299,7 @@ default
         {
             listener=-1;
             startListen();
-            llDialog(userID, TXT_SELECT, [TXT_PETIFY, TXT_DEPETIFY, TXT_LANGUAGE, TXT_CLOSE], chan(llGetKey()));
+            llDialog(userID, "\n("+setInfoText()+")\n \n"+TXT_SELECT, [TXT_PETIFY, TXT_DEPETIFY, TXT_OPTIONS, TXT_LANGUAGE, TXT_CLOSE], chan(llGetKey()));
         }
     }
 

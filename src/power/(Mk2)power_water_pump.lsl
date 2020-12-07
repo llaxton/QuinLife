@@ -1,7 +1,7 @@
 // power_water_pump.lsl
 //  Electrical water pump - supplies water to powered water towers on request if enough energy in grid
 
-float VERSION = 5.0;      // Beta 4 November 2020
+float VERSION = 5.0;      // 27 November 2020
 
 integer DEBUGMODE = FALSE;
 debug(string text)

@@ -1,9 +1,13 @@
+// CHANGE LOG
+// Added 'backup/restore' option for babies
+// Added upgrade to work with attached babies
+
 // rezzer.lsl
 // Rez animals and also update the animal.lsl script in them
 // Objexct changes size/rotation tso you can rez it or wear it.
 
 // This is used to check if updates available from Quintonia product update server
-float VERSION = 5.4;    // 25 October 2020
+float VERSION = 5.6;    // 6 December 2020
 string NAME = "SF Animal Rezzer - Quintonia";
 //
 integer DEBUGMODE = FALSE;    // Set this if you want to force startup in debug mode
@@ -16,7 +20,9 @@ debug(string text)
 integer VER=-1;                 // read from config notecard - is the version of the animal script. Use -1 to force sending script with no version checking e.g. downgrades
 integer sexToggle = 0;
 vector  rezzPosition = <0.0, 0.0, 0.5>;     // REZ_POSITION
-
+string  SF_PREFIX = "SF";                   // SF_PREFIX=SF
+integer scanRange = 96;                     // SENSOR_DISTANCE=96
+//
 string  languageCode = "en-GB";      // use defaults below unless language config notecard present
 //
 // Multilingual support
@@ -32,7 +38,7 @@ string TXT_SET_RANGE="Set Range...";
 string TXT_ENTER_RADIUS="Enter upgrade radius in m (1 to 96)";
 string TXT_CURRENT_VALUE="Current value is a";
 string TXT_RANGE_SET="Upgrade range set to";
-string TXT_CHOOSE_ANIMAL="Choose animal to upgrade";
+string TXT_CHOOSE_ANIMAL="Upgrade";
 string TXT_WARNING_A="WARNING: All animals within a";
 string TXT_RADIUS="radius";
 string TXT_WARNING_B="will be upgraded!";
@@ -47,45 +53,103 @@ string TXT_CANT_UPGRADE="Item can't be upgraded";
 string TXT_UPGRADED="Upgraded ";
 string TXT_NOT_REQUIRED="Upgrade not required for";
 string TXT_NOT_FOUND="not found";
+string TXT_BACKUP = "Backup";
+string TXT_RESTORE = "Restore";
+string TXT_NO_BACKUPS = "No backups stored";
 string TXT_LANGUAGE="@";
 //
 string  SUFFIX = "R1";
 string  PASSWORD="*";
+integer FARM_CHANNEL = -911201;
+integer dChan;
 string  mode;
 integer attachedTo;     // Flags if being run as a HUD rather than rezzed as an object
 integer face;
-integer scanRange = 96;
 string  status;
-list    animals;
+list    buttons;
+list    backups;
 string  senseFor;
 integer nextSex = 1;    // 1=Female, -1 = Male
 string  productScript = "product";
 string  birthCertNC = "birth-date";
+string  statusNC = "an_statusNC";
+string  rezTex;
+string  codedDescNC = "CD";
+string  codedHeader = "";
+string  savedRot = "ZERO_ROTATION";
+string  savedPos = "<0.0, 0.0, 0.0>";
+key     ownerID;
+integer listener=-1;
+integer startOffset=0;
 
 integer chan(key u)
 {
     return -1 - (integer)("0x" + llGetSubString( (string) u, -6, -1) )-393;
 }
 
-integer listener=-1;
-integer listenTs;
-
 startListen()
 {
     if (listener<0)
     {
-        listener = llListen(chan(llGetKey()), "", "", "");
-        listenTs = llGetUnixTime();
+        dChan = chan(llGetKey());
+        listener = llListen(dChan, "", "", "");
     }
 }
 
-checkListen()
+multiPageMenu(string message, list opt)
 {
-    if (listener > 0 && llGetUnixTime() - listenTs > 300)
+    llSetTimerEvent(180);
+    integer l = llGetListLength(opt);
+    if (l < 12)
     {
-        llListenRemove(listener);
-        listener = -1;
+        llDialog(ownerID, message, opt+[TXT_CLOSE], dChan);
     }
+    else
+    {
+        if (startOffset >= l) startOffset = 0;
+        list its = llList2List(opt, startOffset, startOffset + 9);
+        llDialog(ownerID, message, [TXT_CLOSE]+its+[">>"], dChan);
+    }
+}
+
+list animalButtons()
+{
+    string tmpStr = "";
+    list buttons = [];
+    integer i;
+    for (i=0; i < llGetInventoryNumber(INVENTORY_OBJECT); i++)
+    {
+        // Remove the "SF " bit for the buttons
+        tmpStr = llGetInventoryName(INVENTORY_OBJECT, i);
+        tmpStr = llGetSubString(tmpStr, 3, llStringLength(tmpStr));
+        buttons += tmpStr;
+    }
+    return buttons;
+}
+
+showMainMenu()
+{
+    string tmpStr = "";
+    if (llToUpper(llGetScriptName()) != "B-REZZER")
+    {
+        tmpStr = "\n \n" + TXT_SEX +": ";
+        if (sexToggle == 0) tmpStr += TXT_RANDOM; else tmpStr += TXT_TOGGLE;
+    }
+    startListen();
+    if (llToUpper(llGetScriptName()) != "B-REZZER")
+    {
+        multiPageMenu(TXT_SELECT+tmpStr, [TXT_SET_RANGE, TXT_SEX, TXT_LANGUAGE, TXT_REZ, TXT_UPGRADE]);
+    }
+    else
+    {
+        multiPageMenu(TXT_SELECT, [TXT_SET_RANGE, TXT_UPGRADE, TXT_LANGUAGE, TXT_REZ, TXT_BACKUP, TXT_RESTORE]);
+    }
+}
+
+messageObj(key objId, string msg)
+{
+    list check = llGetObjectDetails(objId, [OBJECT_NAME]);
+    if (llList2String(check, 0) != "") osMessageObject(objId, msg);
 }
 
 setConfig(string str)
@@ -95,10 +159,12 @@ setConfig(string str)
     {
         string cmd=llStringTrim(llList2String(tok, 0), STRING_TRIM);
         string val=llStringTrim(llList2String(tok, 1), STRING_TRIM);
-             if (cmd == "VER")           VER = (integer)val;
-        else if (cmd == "SEX_ALTERNATE") sexToggle = (integer)val;
-        else if (cmd == "REZ_POSITION")  rezzPosition = (vector)val;
-        else if (cmd == "LANG")          languageCode = val;
+             if (cmd == "VER")              VER = (integer)val;
+        else if (cmd == "SEX_ALTERNATE")    sexToggle = (integer)val;
+        else if (cmd == "REZ_POSITION")     rezzPosition = (vector)val;
+        else if (cmd == "SF_PREFIX")        SF_PREFIX = val;
+        else if (cmd == "SENSOR_DISTANCE")  scanRange = (integer)val;
+        else if (cmd == "LANG")             languageCode = val;
     }
 }
 
@@ -137,6 +203,8 @@ loadLanguage(string langCode)
                     val = llGetSubString(val, 1, -2);
                     // Now check for language translations
                          if (cmd == "TXT_CLOSE")  TXT_CLOSE = val;
+                    else if (cmd == "TXT_BACKUP") TXT_BACKUP = val;
+                    else if (cmd == "TXT_RESTORE") TXT_RESTORE = val;
                     else if (cmd == "TXT_UPGRADE_ALL") TXT_UPGRADE_ALL = val;
                     else if (cmd == "TXT_ALL") TXT_ALL = val;
                     else if (cmd == "TXT_SELECT") TXT_SELECT = val;
@@ -163,21 +231,16 @@ loadLanguage(string langCode)
                     else if (cmd == "TXT_UPGRADED") TXT_UPGRADED = val;
                     else if (cmd == "TXT_NOT_REQUIRED") TXT_NOT_REQUIRED = val;
                     else if (cmd == "TXT_NOT_FOUND") TXT_NOT_FOUND = val;
+                    else if (cmd == "TXT_NO_BACKUPS") TXT_NO_BACKUPS = val;
                     else if (cmd == "TXT_LANGUAGE") TXT_LANGUAGE = val;
                 }
             }
         }
     }
-    else
-    {
-        llSetObjectDesc("");
-        llResetScript();
-    }
 }
 
-psys(key k)
+psys(key k, string tex)
 {
-
      llParticleSystem(
                 [
                     PSYS_SRC_PATTERN, PSYS_SRC_PATTERN_EXPLODE,
@@ -197,8 +260,8 @@ psys(key k)
 
                     PSYS_PART_START_SCALE,<0.100000,0.100000,0.000000>,
                     PSYS_PART_END_SCALE,<1.000000,1.000000,0.000000>,
-                    PSYS_SRC_TEXTURE,"",
-                    PSYS_SRC_MAX_AGE,2,
+                    PSYS_SRC_TEXTURE,tex,
+                    PSYS_SRC_MAX_AGE,5,
                     PSYS_PART_MAX_AGE,5,
                     PSYS_SRC_BURST_RATE, 10,
                     PSYS_SRC_BURST_PART_COUNT, 30,
@@ -213,29 +276,16 @@ psys(key k)
                         PSYS_PART_INTERP_COLOR_MASK |
                         PSYS_PART_INTERP_SCALE_MASK
                 ]);
-
 }
 
-integer startOffset=0;
-
-multiPageMenu(key id, string message, list opt)
+texAnim(integer animate)
 {
-    integer l = llGetListLength(opt);
-    integer ch = chan(llGetKey());
-    if (l < 12)
-    {
-        llDialog(id, message, opt+[TXT_CLOSE], ch);
-        return;
-    }
-    if (startOffset >= l) startOffset = 0;
-    list its = llList2List(opt, startOffset, startOffset + 9);
-    llDialog(id, message, [TXT_CLOSE]+its+[">>"], ch);
+    if (animate == TRUE) llSetTextureAnim(ANIM_ON | SMOOTH | ROTATE | LOOP, face, 1, 1, 0, TWO_PI, 2.0); else llSetTextureAnim(FALSE, ALL_SIDES, 0, 0, 0.0, 0.0, 1.0);
 }
-
 
 startUpgrading(string m)
 {
-    llSetTextureAnim(ANIM_ON | SMOOTH | ROTATE | LOOP, face, 1, 1, 0, TWO_PI, 2.0);
+    texAnim(TRUE);
     m = "SF " + m;
     llSleep(1.);
     llSay(0, TXT_UPGRADE_ALL +" '"+m+"' " +TXT_RANGE_SET+" "  +(string)(llRound(scanRange))+" " +TXT_RADIUS);
@@ -243,53 +293,64 @@ startUpgrading(string m)
     llSensor(m, "", SCRIPTED, scanRange, PI);
 }
 
-showMainMenu(key userID)
+setIdleText()
 {
-    string tmpStr = "";
-    animals = [];
-    integer i;
-    for (i=0; i < llGetInventoryNumber(INVENTORY_OBJECT); i++)
+    llSetText("...", <0,1,1>, 1.0);
+    string name;
+    string prompt = "\n";
+    integer index;
+    integer prefixLength = llStringLength(statusNC);
+    integer count = llGetInventoryNumber(INVENTORY_NOTECARD);
+    for (index = 0; index < count; index++)
     {
-        // Remove the "SF " bit for the buttons
-        tmpStr = llGetInventoryName(INVENTORY_OBJECT, i);
-        tmpStr = llGetSubString(tmpStr, 3, llStringLength(tmpStr));
-        animals += tmpStr;
+        name = llGetInventoryName(INVENTORY_NOTECARD, index);
+        if ((llGetSubString(name, 0, prefixLength-1) == statusNC) && (name != statusNC))
+        {
+            prompt +=  llGetSubString(name, prefixLength+1, -1) +"\n";
+        }
     }
-    if (llToUpper(llGetScriptName()) != "B-REZZER")
-    {
-        tmpStr = "\n \n" + TXT_SEX +": ";
-        if (sexToggle == 0) tmpStr += TXT_RANDOM; else tmpStr += TXT_TOGGLE;
-    }
-    mode = "";
-    startListen();
-    if (llToUpper(llGetScriptName()) != "B-REZZER") multiPageMenu(userID, TXT_SELECT+tmpStr, [TXT_SET_RANGE, TXT_SEX, TXT_LANGUAGE, TXT_REZ, TXT_UPGRADE]);
-        else multiPageMenu(userID, TXT_SELECT, [TXT_SET_RANGE, TXT_UPGRADE, TXT_LANGUAGE, TXT_REZ]);
-    llSetTimerEvent(1000);
+    llSetText(TXT_REZ_ANIMAL + "\n OR \n" +TXT_CHOOSE_ANIMAL +"\n \n" +prompt, <1,1,1>,1.0);
+    llSetColor(<1,1,1>, ALL_SIDES);
+    texAnim(FALSE);
 }
+
 
 default
 {
 
     listen(integer c, string nm, key id, string m)
     {
+        debug("listen:"+m +" from:"+nm +"  mode="+mode);
         if (m == TXT_CLOSE)
         {
-            mode = "";
+            llSetTimerEvent(0.1);
         }
         else if (m ==">>")
         {
             startOffset += 10;
-            multiPageMenu(id, TXT_REZ_ANIMAL, animals);
+            if (mode == "Rezzing") multiPageMenu(TXT_REZ_ANIMAL, animalButtons()); else multiPageMenu(TXT_SELECT, buttons);
         }
         else if (m ==TXT_SET_RANGE)
         {
             mode = "waitRange";
-            llTextBox(id, "\n" + TXT_ENTER_RADIUS+"\n" +TXT_CURRENT_VALUE+" "  +(string)(llRound(scanRange)) + " m " +TXT_RADIUS, chan(llGetKey()));
+            llTextBox(ownerID, "\n" + TXT_ENTER_RADIUS+"\n" +TXT_CURRENT_VALUE+" "  +(string)(llRound(scanRange)) + " m " +TXT_RADIUS, dChan);
         }
         else if  (m == TXT_UPGRADE)
         {
-            mode = "Upgrading";
-            multiPageMenu(id, "\n " +TXT_CHOOSE_ANIMAL+"\n\n" +TXT_WARNING_A+" " +(string)(llRound(scanRange)) + "m " +TXT_RADIUS + " " + TXT_WARNING_B +"\n \n", [TXT_ALL]+animals);
+            if (llToUpper(llGetScriptName()) == "B-REZZER")
+            {
+                texAnim(TRUE);
+                llSetText(TXT_UPGRADE+"...", <1.0, 0.0, 1.0>, 1.0);
+                mode = "waitSearchBaby";
+                llRegionSay(FARM_CHANNEL, "UPGRADE-REQ|"+PASSWORD+"|"+(string)ownerID+"|"+(string)llGetKey());
+                llSetTimerEvent(60);
+            }
+            else
+            {
+                mode = "upgradingAnimals";
+                buttons = animalButtons();
+                multiPageMenu("\n " +TXT_CHOOSE_ANIMAL+"\n\n" +TXT_WARNING_A+" " +(string)(llRound(scanRange)) + "m " +TXT_RADIUS + " " + TXT_WARNING_B +"\n \n", [TXT_ALL]+buttons);
+            }
         }
         else if (m == TXT_REZ)
         {
@@ -307,21 +368,64 @@ default
                 }
             }
             mode = "Rezzing";
-            multiPageMenu(id, "\n" +TXT_REZ_ANIMAL +tmpStr, animals);
+            multiPageMenu("\n" +TXT_REZ_ANIMAL +tmpStr, animalButtons());
         }
-        else if (m == TXT_ALL && mode == "Upgrading")
+        else if (m == TXT_BACKUP)
         {
-            integer i;
-            for (i=0; i < llGetListLength(animals); i++)
+            texAnim(TRUE);
+            llSetText(TXT_BACKUP+"...", <1.0, 0.0, 1.0>, 1.0);
+            mode = "waitBackupNC";
+            if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD) llRemoveInventory(statusNC);
+            llRegionSay(FARM_CHANNEL, "BACKUP-REQ|"+PASSWORD+"|"+(string)ownerID+"|"+(string)llGetKey());
+            llSetTimerEvent(30);
+        }
+        else if (m == TXT_RESTORE)
+        {
+            if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD) llRemoveInventory(statusNC);
+            backups = [];
+            buttons = [];
+            string name;
+            string prompt = "\n";
+            integer index;
+            integer tally = 0;
+            integer prefixLength = llStringLength(statusNC);
+            integer count = llGetInventoryNumber(INVENTORY_NOTECARD);
+            for (index = 0; index < count; index++)
             {
-                startUpgrading(llList2String(animals,i));
+                name = llGetInventoryName(INVENTORY_NOTECARD, index);
+                if (llGetSubString(name, 0, prefixLength-1) == statusNC)
+                {
+                    buttons += llGetSubString(name, prefixLength+1, -1);
+                    tally++;
+                    backups += (string)tally;
+                    prompt += (string)tally +"\t" + llGetSubString(name, prefixLength+1, -1) +"\n";
+                }
+            }
+            if (llGetListLength(buttons) != 0)
+            {
+                mode = "waitBackupSelect";
+                startOffset = 0;
+                multiPageMenu(TXT_SELECT+prompt, backups);
+            }
+            else
+            {
+                llOwnerSay(TXT_NO_BACKUPS);
+            }
+        }
+        else if (m == TXT_ALL && mode == "upgradingAnimals")
+        {
+            texAnim(TRUE);
+            integer i;
+            for (i=0; i < llGetListLength(buttons); i++)
+            {
+                startUpgrading(llList2String(buttons,i));
             }
         }
         else if (m == TXT_SEX)
         {
             sexToggle = !sexToggle;
             mode = "";
-            showMainMenu(id);
+            showMainMenu();
         }
         else if (m == TXT_LANGUAGE)
         {
@@ -334,21 +438,23 @@ default
             integer tmpVal = (integer)m;
             if (tmpVal >96) scanRange = 96;
             else if (tmpVal <1) scanRange = 1; else scanRange = tmpVal;
-            llRegionSayTo(id, 0, TXT_RANGE_SET+" " + scanRange + "m " +TXT_RADIUS);
+            llOwnerSay(TXT_RANGE_SET+" " + scanRange + "m " +TXT_RADIUS);
         }
-        else if (mode == "Upgrading")
+        else if (mode == "upgradingAnimals")
         {
+            texAnim(TRUE);
             llOwnerSay(TXT_ANIMAL_VERSION+": " +(string)VER);
             startUpgrading(m);
         }
         else  if (mode == "Rezzing")
         {
+            texAnim(TRUE);
             m = "SF " + m;
             llSay(0, TXT_REZZING+" "+m+". "+TXT_WAIT);
             llSetText(TXT_REZZING+" "+m+"\n"+TXT_WAIT +"\n ", <1.000, 0.522, 0.106>,1.0);
             llSetColor(<1.000, 0.522, 0.106>, 4);
+            psys(ownerID, rezTex);
             vector pos;
-
             if (attachedTo == 0)
             {
                 pos = llGetPos() + <1.0, 0.0, 0.2>*llGetRot();
@@ -367,6 +473,48 @@ default
             //llRezObject(m, pos, <0,0,0>, ZERO_ROTATION, nextSex);
             llMessageLinked(LINK_SET, -1, "REZ_PRODUCT|" +PASSWORD +"|" +(string)id +"|" +m, NULL_KEY);
         }
+        else if (mode == "waitBackupSelect")
+        {
+            texAnim(TRUE);
+            integer index = (integer)m;
+            index = index -1;
+            string name = statusNC + ":" + llList2String(buttons, index);
+            if (llGetInventoryType(name) == INVENTORY_NOTECARD)
+            {
+                llSetText(TXT_RESTORE+"...", <1,1,1>, 1.0);
+                if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+                {
+                    llRemoveInventory(statusNC);
+                    llSleep(0.2);
+                }
+                string tmpStr = osGetNotecard(name);
+                osMakeNotecard(statusNC, tmpStr);
+                //
+                name = codedDescNC + ":" + llList2String(buttons, index);
+                if (llGetInventoryType(name) == INVENTORY_NOTECARD)
+                {
+                    if (llGetInventoryType(codedDescNC) == INVENTORY_NOTECARD)
+                    {
+                        llRemoveInventory(codedDescNC);
+                        llSleep(0.2);
+                    }
+                    tmpStr = osGetNotecard(name);
+                    osMakeNotecard(codedDescNC, tmpStr);
+                    llSleep(1.0);
+                    llRegionSay(FARM_CHANNEL, "RESTORE-REQ|"+PASSWORD+"|"+(string)ownerID+"|"+(string)llGetKey());
+                }
+                else
+                {
+                    llOwnerSay(TXT_NO_BACKUPS);
+                    texAnim(FALSE);
+                }
+            }
+            else
+            {
+                llOwnerSay(TXT_NO_BACKUPS);
+                texAnim(FALSE);
+            }
+        }
         else
         {
             // ERROR!
@@ -375,35 +523,35 @@ default
 
     timer()
     {
-        checkListen();
-        if (mode != "")
-        {
-            llSetTimerEvent(0);
-            mode = "";
-            llSetTextureAnim(FALSE, ALL_SIDES, 0, 0, 0.0, 0.0, 1.0);
-        }
+        llSetTimerEvent(0);
+        llListenRemove(listener);
+        listener = -1;
+        mode = "";
+        setIdleText();
     }
 
     touch_start(integer n)
     {
-        if (llGetOwner() != llDetectedKey(0)) return; else showMainMenu(llDetectedKey(0));
+        if (llDetectedKey(0) == ownerID) showMainMenu();
     }
 
     state_entry()
     {
-        llSetTextureAnim(FALSE, ALL_SIDES, 0, 0, 0.0, 0.0, 1.0);
+        texAnim(FALSE);
         PASSWORD = llStringTrim(osGetNotecard("sfp"), STRING_TRIM);
         loadConfig();
-        if (languageCode != "") loadLanguage(languageCode);
+        loadLanguage(languageCode);
+        ownerID = llGetOwner();
         integer i;
         integer count = llGetInventoryNumber(INVENTORY_SCRIPT);
         for (i=0; i<count; i++)
         {
             if (llGetSubString(llGetInventoryName(INVENTORY_SCRIPT, i), 0, 6) == "product") productScript = llGetInventoryName(INVENTORY_SCRIPT, i);
         }
-        llSetText(TXT_REZ_ANIMAL + "\n OR \n" +TXT_CHOOSE_ANIMAL +"\n \n", <1,1,1>,1.0);
+        setIdleText();
         if (llToUpper(llGetScriptName()) != "B-REZZER")
         {
+            rezTex = "rez-animal";
             attachedTo =  llGetAttached();
             if (attachedTo == 0)
             {
@@ -421,6 +569,10 @@ default
                 llSetLinkPrimitiveParamsFast(LINK_THIS, [ PRIM_SIZE, <0.15, 0.10, 0.15>,
                                                           PRIM_ROTATION, rot ]);
             }
+        }
+        else
+        {
+            rezTex = "rez-baby";
         }
     }
 
@@ -490,15 +642,14 @@ default
         {
             llRemoteLoadScriptPin(id, "animal", 999, TRUE, 0);
         }
-        llSetColor(<1.0, 1.0, 1.0>, 4);
-        llSetText(TXT_REZ_ANIMAL + "\n OR \n" +TXT_CHOOSE_ANIMAL +"\n \n", <1,1,1>,1.0);
+        llSetTimerEvent(0.5);
     }
 
     sensor(integer n)
     {
-        if (mode == "Upgrading")
+        integer i;
+        if (mode == "upgradingAnimals")
         {
-            integer i;
             for (i=0; i < n; i++)
             {
                 key u = llDetectedKey(i);
@@ -506,7 +657,7 @@ default
                 if (llList2String(desc, 0) == "A")
                 {
                     llSay(0, TXT_TRYING +" '"+llList2String(desc, 10)+"'");
-                    osMessageObject(u, "VERSION-CHECK|"+PASSWORD+"|"+(string)llGetKey());
+                    messageObj(u, "VERSION-CHECK|"+PASSWORD+"|"+(string)llGetKey());
                     llSleep(2);
                 }
                 else
@@ -515,17 +666,17 @@ default
                 }
             }
         }
-        else llSetTextureAnim(FALSE, ALL_SIDES, 0, 0, 0.0, 0.0, 1.0);
     }
 
     no_sensor()
     {
         llSay(0, senseFor+" " +TXT_NOT_FOUND);
-        llSetTimerEvent(15);
+        llSetTimerEvent(5);
     }
 
     dataserver(key id, string m)
     {
+        debug("dataserver:"+m);
         list tk = llParseString2List(m, ["|"], []);
         if (llList2String(tk,1) == PASSWORD)
         {
@@ -550,11 +701,12 @@ default
                         ncName = llGetInventoryName(INVENTORY_NOTECARD, i);
                         if (llGetSubString(ncName, 5, 11) == "-langA1") langNCs = langNCs + ncName +",";
                     }
-                    osMessageObject(id, "DO-UPDATE|" +PASSWORD+"|" +(string)llGetKey() +"|animal,setpin,language_plugin,prod-rez_plugin,product,animal 1,animal-heaven,angel" + langNCs);
+                    messageObj(id, "DO-UPDATE|" +PASSWORD+"|" +(string)llGetKey() +"|animal,setpin,language_plugin,prod-rez_plugin,product,animal 1,animal-heaven,angel,hud-main" + langNCs);
                 }
                 else
                 {
                     llOwnerSay(TXT_NOT_REQUIRED +": " +llKey2Name(id) +"\n" + (string)id);
+                    if (llToUpper(llGetScriptName()) == "B-REZZER") llSetTimerEvent(0.1);
                 }
                 llSetTimerEvent(15);
             }
@@ -566,7 +718,7 @@ default
                 string ncSuffix;
                 integer i;
                 integer count = llGetInventoryNumber(INVENTORY_NOTECARD);
-                // For baby rezzer need to give them the B1 and B2 language notecards
+                // For baby rezzer need to give them the B1 and B2 language notecards and the latest hud-main script
                 if (llToUpper(llGetScriptName()) == "B-REZZER")
                 {
                     for (i=0; i<count; i+=1)
@@ -575,6 +727,7 @@ default
                         ncSuffix = llGetSubString(ncName, 5, 11);
                         if (ncSuffix == "-langB1" || ncSuffix == "-langB2") llGiveInventory(id, ncName);
                     }
+                    llRemoteLoadScriptPin(kobject, "hud-main", ipin, TRUE, 0);
                 }
                 else
                 {
@@ -594,11 +747,38 @@ default
                 list desc = llParseString2List(llList2String(llGetObjectDetails(kobject, [OBJECT_DESC]) , 0) , [";"], []);
                 llSay(0, TXT_UPGRADED +" "+ llList2String(desc,10)+ " (" +llKey2Name(kobject)+")");
             }
+            else if (cmd == "STATUSNC-SENT")
+            {
+                if (llGetInventoryType(statusNC) == INVENTORY_NOTECARD)
+                {
+                    string tmpStr = osGetNotecard(statusNC);
+                    string timeStamp = llGetTimestamp();
+                    osMakeNotecard(statusNC+":"+timeStamp, tmpStr);
+                    llSleep(1.0);
+                    llRemoveInventory(statusNC);
+                    codedHeader = llList2String(tk, 2);
+                    savedRot = llList2String(tk, 3);
+                    savedPos = llList2String(tk, 4);
+                    osMakeNotecard(codedDescNC+":"+timeStamp, codedHeader+"\n"+ savedRot +"\n" +savedPos);
+                    llSetTimerEvent(0.1);
+                }
+            }
+            else if (cmd == "STATUSNC-DEAD")
+            {
+                codedHeader = osGetNotecardLine(codedDescNC, 0);
+                savedRot = osGetNotecardLine(codedDescNC, 1);
+                savedPos = osGetNotecardLine(codedDescNC, 2);
+                llGiveInventory(llList2Key(tk, 2), statusNC);
+                llSleep(0.5);
+                messageObj(llList2Key(tk, 2), "GET-STATUSNC|"+PASSWORD+"|"+codedHeader+"|"+savedRot+"|"+savedPos);
+                llSetTimerEvent(5.0);
+            }
         }
     }
 
     link_message(integer sender_num, integer num, string str, key id)
     {
+        debug("link_message:"+str);
         list tk = llParseString2List(str, ["|"], []);
         string cmd = llList2String(tk, 0);
         if (cmd == "VERSION-REQUEST")
@@ -616,7 +796,11 @@ default
 
     changed(integer change)
     {
-        if (change & CHANGED_INVENTORY) llResetScript();
+        if (change & CHANGED_INVENTORY)
+        {
+            loadConfig();
+            loadLanguage(languageCode);
+        }
     }
 
 }

@@ -1,8 +1,8 @@
 // feeder_grass.lsl
 //  Grass feeder - self sustaining feeder that just requires a water source
 //
-float VERSION = 4.0;      // Beta 18 October 2020
-integer   RSTATE = 0;     // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
+float VERSION = 4.1;      // 28 November 2020
+integer   RSTATE = 1;     // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 integer DEBUGMODE = TRUE;
 debug(string text)

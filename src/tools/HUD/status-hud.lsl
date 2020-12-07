@@ -3,11 +3,11 @@
 //   status-hud.lsl
 // ------------------------------------
 // Optional item to wear so others can see your status info
-float VERSION = 5.1;        //  Beta 5 November 2020
+float VERSION = 5.2;        //  Beta 1 December 2020
 string NAME = "SFQ Status-HUD";
 //string NAME = "BabyStatusHUD";
 
-integer DEBUGMODE;
+integer DEBUGMODE = FALSE;
 debug(string text)
 {
     if (DEBUGMODE == TRUE) llOwnerSay("DEBUG_" + llToUpper(llGetScriptName()) + " " + text);
@@ -20,7 +20,7 @@ key     hudKey;
 key     ownerID;
 float   textAlpha = 1.0;
 integer dirty;
-integer visible = TRUE;
+integer visible;
 string  rainPrim = "prim_rain";
 vector  rainSize = <50.00000, 50.00000, 35.97878>;
 integer rainTs = -1;
@@ -133,13 +133,16 @@ setAlpha()
 {
     if (visible == FALSE)
     {
+        llSetPrimitiveParams([ PRIM_TEXT, "", ZERO_VECTOR, 0.0,
+                               PRIM_GLOW, ALL_SIDES, 0.0]);
         llSetAlpha(0.0, ALL_SIDES);
-        llSetText("", ZERO_VECTOR, 0.0);
+
     }
     else
     {
+        llSetPrimitiveParams([ PRIM_TEXT, "|", <1,1,1>, 1.0,
+                               PRIM_GLOW, ALL_SIDES, 0.1]);
         llSetAlpha(1.0, ALL_SIDES);
-        llSetText("|", <1,1,1>, 1.0);
     }
 }
 
@@ -160,7 +163,6 @@ default
         showText("...", <1,1,1>);
         llStopSound();
         llParticleSystem([]);
-        setAlpha();
         dirty = FALSE;
         listenerFarm = llListen(FARM_CHANNEL, "", "", "");
         llSetTimerEvent(30);
@@ -188,7 +190,6 @@ default
         {
             llRegionSay(FARM_CHANNEL, "INDICATOR_HELLO|"+PASSWORD+"|"+(string)llGetKey());
         }
-        else llRegionSayTo(llDetectedKey(0), 0, "Hello!");
     }
 
     dataserver(key query_id, string msg)
@@ -196,7 +197,6 @@ default
         list tk = llParseStringKeepNulls(msg, ["|"], []);
         string cmd = llList2String(tk, 0);
         debug("dataserver: " + msg + "  (cmd=" +cmd +")");
-
         if (cmd == "INIT")
         {
             PASSWORD = llList2String(tk, 1);

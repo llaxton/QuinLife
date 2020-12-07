@@ -8,8 +8,8 @@
  Drop a texture inside the product for the particles rezzed when used
 
 **/
-float  VERSION = 5.1;   // 9 November 2020
-integer RSTATE = -1;    // RSTATE: 1=release, 0=beta, -1=RC
+float  VERSION = 5.1;   // 28 November 2020
+integer RSTATE = 1;     // RSTATE: 1=release, 0=beta, -1=RC
 //
 integer DEBUGMODE = FALSE;    // Set this if you want to force startup in debug mode
 debug(string text)

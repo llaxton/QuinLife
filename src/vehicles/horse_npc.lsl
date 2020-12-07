@@ -1,5 +1,5 @@
 // horse_npc.lsl
-// Version 1.1   11 November 2020
+// Version 1.2   29 November 2020
 
 // config notecard settings
 string firstName = "Wild";      // FIRST_NAME=Wild
@@ -65,7 +65,7 @@ default
     {
         forceRemove = FALSE;
         loadConfig();
-        refresh;
+        refresh();
         llSetTimerEvent(idleTime);
     }
 

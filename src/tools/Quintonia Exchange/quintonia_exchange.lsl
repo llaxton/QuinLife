@@ -24,7 +24,7 @@ string TXT_RESET = "RESET";
 //  to buy & sell goods using Quinto coins
 // -----------------------------------------
 //
-float   VERSION = 5.1;    // Beta 8 November 2020
+float   VERSION = 5.1;    // Beta 30 November 2020
 integer RSTATE = 0;       // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 integer DEBUGMODE = FALSE;
@@ -46,7 +46,7 @@ integer FACE = 4;                           // FACE=4               Which face t
 vector  rezzPosition = <-1.5, 0.0, -1.0>;   // REZ_POSITION=
 integer SENSOR_DISTANCE = 10;               // SENSOR_DISTANCE=10   Radius in m to scan
 integer offset = 0;                         // Offset from UTC
-integer useHTTPS = FALSE;                   // USE_HTTPS=0;     Set to 1 to force https comms with server
+integer useHTTPS = FALSE;                   // USE_HTTPS=0;         Set to 1 to force https comms with server
 string  languageCode = "en-GB";             //
 //
 string  SUFFIX = "E1";
@@ -1343,7 +1343,7 @@ default
 
     http_response(key request_id, integer HStatus, list metadata, string body)
     {
-        debug("http_response - HStatus: "+HStatus +"\nStatus="+status +"opMode:"+(string)opMode +"\nbody: "+body);
+        debug("http_response\n HStatus: "+HStatus +"\n Status="+status +"\n opMode:"+(string)opMode +"\n body: "+body);
         if (request_id == farmHTTP)
         {
             llSetColor(WHITE, 4);

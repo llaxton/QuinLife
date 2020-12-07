@@ -4,7 +4,7 @@
 // Name for extra holders (such as plates etc) should be 'EMPTY'
 //
 
-float   VERSION = 4.2;    // Beta 24 October 2020
+float   VERSION = 4.3;    // Beta 7 December 2020
 integer RSTATE  = 0;      // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 integer DEBUGMODE = FALSE;
@@ -47,6 +47,7 @@ float   uHeight=0;
 //
 string  emptyName;
 string  specialName;
+list    customOptions = [];
 
 
 integer chan(key u)
@@ -143,6 +144,8 @@ loadLanguage(string langCode)
             }
         }
     }
+    llMessageLinked(LINK_SET, 1, "LANG|SELECT|"+TXT_SELECT, "");
+    llMessageLinked(LINK_SET, 1, "LANG|CLOSE|"+TXT_CLOSE, "");
  }
 
 
@@ -224,6 +227,7 @@ default
             llOwnerSay(TXT_CONFIG_ERROR);
         }
         if (embedded == TRUE) llMessageLinked(LINK_SET, 99, "ADD_MENU_OPTION|"+TXT_RESET, "");
+        llMessageLinked(LINK_SET, 99, "RESET", "");
     }
 
     touch_end(integer numb)
@@ -234,7 +238,9 @@ default
             {
                 list opts = [];
                 if (followUser == NULL_KEY) opts += TXT_FOLLOW_ME; else opts += TXT_STOP;
-                opts += [TXT_RESET, TXT_LANGUAGE, TXT_CLOSE];
+                opts += [TXT_RESET, TXT_LANGUAGE];
+                if (llGetListLength(customOptions) != 0) opts += customOptions;
+                opts += [TXT_CLOSE];
                 startListen();
                 llDialog(llDetectedKey(0), TXT_SELECT, opts, chan(llGetKey()));
                 llSetTimerEvent(300);
@@ -248,7 +254,7 @@ default
 
         if (m == TXT_CLOSE)
         {
-            //
+            checkListen(TRUE);
         }
         else if (m == TXT_FOLLOW_ME)
         {
@@ -271,7 +277,10 @@ default
         {
             llMessageLinked(LINK_THIS, 1, "LANG_MENU|" + languageCode, id);
         }
-        //followUser = id;
+        else
+        {
+            llMessageLinked(LINK_SET, 93, "MENU_OPTION|"+m, id);
+        }
         llSetTimerEvent(1.0);
     }
 
@@ -500,6 +509,7 @@ default
 
     link_message(integer sender_num, integer num, string str, key id)
     {
+        debug("link_message:"+str +"  num="+(string)num);
         list tk = llParseString2List(str, ["|"], []);
         string cmd = llList2String(tk, 0);
         if (cmd == "SET-LANG")
@@ -507,6 +517,22 @@ default
             languageCode = llList2String(tk, 1);
             loadLanguage(languageCode);
             refresh();
+        }
+        if (cmd == "ADD_MENU_OPTION")
+        {
+            string option = llList2String(tk, 1);
+            if (llListFindList(customOptions, [option]) == -1)
+            {
+                customOptions += [option];
+            }
+        }
+        else if (cmd == "REM_MENU_OPTION")
+        {
+            integer findOpt = llListFindList(customOptions, [llList2String(tk,1)]);
+            if (findOpt != -1)
+            {
+                customOptions = llDeleteSubList(customOptions, findOpt, findOpt);
+            }
         }
         else if (cmd == "MENU_OPTION")
         {

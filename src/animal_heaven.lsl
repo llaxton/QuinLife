@@ -1,5 +1,5 @@
 // animal-heaven.lsl
-// Version 1.1    16 November 2020
+// Version 2.0    5 December 2020
 
 key toucher;
 integer dead = FALSE;

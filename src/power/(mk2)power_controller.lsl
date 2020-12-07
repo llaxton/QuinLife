@@ -2,10 +2,11 @@
 string TXT_SAME_GROUP  = "Both controllers are in the same group";
 string TXT_BOTH_OPEN   = "At least one controller needs to have 'ONLY_GROUP=1' in config file";
 string TXT_DELETE_LOGS = "Delete logs";
+
 // power_controller.lsl
 //  Region-wide power grid controller. Accepts energy from wind turbines and also can receive and give 'kWh' objects. Uses a region-wide channel.
 
-float   VERSION = 5.0;     // Beta  4 November 2020
+float   VERSION = 5.1;     // Beta  6 December 2020
 integer  RSTATE = 0;       // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 integer DEBUGMODE = FALSE;
@@ -23,7 +24,9 @@ integer maxEnergy = 2000;       // MAX_ENERGY=      Maximum  storage capacity fo
 integer minLevel = 1;           // MIN_LEVEL=       Below this level, the controller won't allow avatars to take SF kWh directly from it.
 string  name = "";              // NAME=            If specified use this name rather than region name on the controller display
 integer logging = 1;            // logging=1        Set to 0 to disable logging
-string  SF_KWH="SF kWh";        // SF_KWH=SF kWh    Name of energy product to rez (must be in objects inventory)
+string  SF_KWH = "SF kWh";      // SF_KWH=SF kWh    Name of energy product to rez (must be in objects inventory)
+string  fontName = "Courier";   // FONT=Courier     Font to use
+integer fontSize = 7;           // SIZE=7           Base font size
 string  languageCode = "en-GB"; // LANG=en-GB
 
 // For multilingual support
@@ -223,6 +226,8 @@ loadConfig()
                 else if (cmd == "NAME")            name = val;
                 else if (cmd == "LOGGING")         logging = (integer)val;
                 else if (cmd == "SF_KWH")          SF_KWH = val;
+                else if (cmd == "FONT")            fontName = val;
+                else if (cmd == "SIZE")            fontSize = (integer)val;
                 else if (cmd == "LANG")            languageCode = val;
             }
         }
@@ -342,6 +347,14 @@ loadStateByDesc()
     }
 }
 
+string fixedPrecision(float input, integer precision)
+{
+    precision = precision - 7 - (precision < 1);
+    if(precision < 0)
+        return llGetSubString((string)input, 0, precision);
+    return (string)input;
+}
+
 string fixedStrLen(string value, integer length)
 {
     string returnStr = value;
@@ -355,14 +368,6 @@ string fixedStrLen(string value, integer length)
         returnStr = llGetSubString(value, 0, length-1);
     }
     return returnStr;
-}
-
-string fixedPrecision(float input, integer precision)
-{
-    precision = precision - 7 - (precision < 1);
-    if(precision < 0)
-        return llGetSubString((string)input, 0, precision);
-    return (string)input;
 }
 
 string neatVector(vector input)
@@ -416,9 +421,9 @@ displayData(integer forceUpdate)
         draw = osMovePen(draw, 1,1);
         draw = osDrawRectangle(draw, 250,250);
         // Status message on first line
-        draw += "FontName Courier;";
+        draw = osSetFontName(draw, fontName);
+        draw = osSetFontSize(draw, fontSize);
         draw = osMovePen(draw, 7, 7);
-        draw = osSetFontSize(draw, 7);
         draw = osSetPenColor(draw, "sandybrown");
         draw = osDrawText(draw, statusMessage + "\n");
         // Stats box text
@@ -437,7 +442,6 @@ displayData(integer forceUpdate)
            statusText += "\n" + fixedStrLen(SF_KWH, 10) + "\t  -\t  -\t  " +fixedStrLen(llList2String(generators, i-1), 3) + "\n";
         }
         draw = osMovePen(draw, 6, 29);
-        draw = osSetFontSize(draw, 7);
         draw = osSetPenColor(draw, "gold");
         draw = osDrawText(draw, statusText);
         // Totals text
@@ -458,9 +462,8 @@ displayData(integer forceUpdate)
                 llSetText(TXT_HEADING + "\n" + TXT_TOTAL_ENERGY + " " + fixedPrecision((string)(energy/1000), 2)  + " " + TXT_MWH  + "\n" +tmpStr, <1,1,1>, 1.0);
             }
         }
-        draw += "FontName Courier;";
         draw = osMovePen(draw, 9, 180);
-        draw = osSetFontSize(draw, 8);
+        draw = osSetFontSize(draw, fontSize+1);
         draw = osSetPenColor(draw, "gold");
         draw = osDrawText(draw, statusText);
         // Put it all onto the display screen

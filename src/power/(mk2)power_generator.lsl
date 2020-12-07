@@ -1,8 +1,8 @@
 // power_generator.lsl
 //  Unit generates energy from fuel and sends power to region controller
 //
-float   VERSION = 5.0;    // Beta  5 November 2020
-integer RSTATE = 0;       // RSTATE: 1=release, 0=beta, -1=RC
+float   VERSION = 5.0;    // 27 November 2020
+integer RSTATE = 1;       // RSTATE: 1=release, 0=beta, -1=RC
 
 integer DEBUGMODE = FALSE;
 debug(string text)

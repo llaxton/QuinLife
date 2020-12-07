@@ -1,11 +1,8 @@
-//string TXT_RELOAD="Retrieve Key";
-string TXT_RELOAD="Retrieve";
-
 // ------------------------------------
 //  QUINTONIA FARM HUD - Main script
 // ------------------------------------
 // VERSION & NAME used to check for updates from Quintonia product update server
-float  VERSION = 5.1;            // BETA 7 November 2020
+float  VERSION = 5.1;            // BETA 7 December 2020
 string subVersion = "Beta";      // Set to "" for release
 string NAME = "SFQ Main-HUD";
 //
@@ -26,6 +23,7 @@ string recipesServerURL = "http://quintonia.net/components/com_quinty/recipes.ph
 //
 // These values can be overridden with config notecard unless already stored in description
 integer useEffects = TRUE;                  // EFFECTS              Default is 1  i.e. effects are on
+float   fxVolume = 1.0;                     // VOLUME=10            Volume, 0 to 10
 integer echoChat = FALSE;                   // ECHO_CHAT            Default is 0  i.e. don't echo in local chat all messages to screen
 integer timeRate =  60;                     // EAT_INTERVAL         Default is 60 i.e. eat approx every 60 minutes
 integer scanRange = 96;                     // SCAN_RANGE           How far to scan for items to use/store
@@ -48,17 +46,6 @@ integer useHTTPS = FALSE;                   // USE_HTTPS=0;         Set to 1 to 
 string  languageCode = "en-GB";             // LANG
 //
 // Mulitlingual support
-
-// NEW ITEMS TO BE TRANSLATED
-string TXT_AGE_BABY="Baby";
-string TXT_AGE_CHILD="Child";
-string TXT_AGE_ADULT="Adult";
-string TXT_BABY="BABY";
-string TXT_TOUCH="Touch";
-string TXT_DEAD="DEAD";
-string TXT_RIP="R I P";
-
-
 string TXT_ACCOUNT="Account";
 string TXT_ADVANCED="ADVANCED";
 string TXT_AFK="AFK";
@@ -180,6 +167,15 @@ string TXT_WHICH_ANIMAL="Query which animal";
 string TXT_WOOD="Wood";
 string TXT_YOU_ARE_SICK="You are sick!";
 string TXT_XP="XP";
+string TXT_AGE_BABY="Baby";
+string TXT_AGE_CHILD="Child";
+string TXT_AGE_ADULT="Adult";
+string TXT_BABY="BABY";
+string TXT_TOUCH="Touch";
+string TXT_DEAD="DEAD";
+string TXT_RIP="R I P";
+string TXT_SLEEPING="Sleeping";
+string TXT_RELOAD="Retrieve";
 string TXT_LANGUAGE="@";
 
 string TXT_STATUS_HUD_STATE="Status HUD";
@@ -276,12 +272,13 @@ vector  borderColour;
 key     req_id2 = NULL_KEY;
 key     indicatorKey = NULL_KEY;
 key     critterKey = NULL_KEY;
-key     ownerID = NULL_KEY;
+key     userID = NULL_KEY;
 key     owner_age_query = NULL_KEY;
 integer statusHudVisible = TRUE;
 integer safetyCheck = TRUE;
 string  thisRegion;
 string  mainTarget;
+integer sleeping = FALSE;
 
 integer chan(key u)
 {
@@ -373,7 +370,7 @@ key checkAttached(string objName)
     if (MY_HUD == TRUE)
     {
         key found = NULL_KEY;
-        list attached = llGetAttachedList(ownerID);
+        list attached = llGetAttachedList(userID);
         integer count = llGetListLength(attached);
         for (i=0; i < count; i++)
         {
@@ -404,6 +401,7 @@ setConfig(string line)
         string cmd=llStringTrim(llList2String(tok, 0), STRING_TRIM);
         string val=llStringTrim(llList2String(tok, 1), STRING_TRIM);
         if      (cmd == "EFFECTS")         useEffects = (integer)val;
+        else if (cmd == "VOLUME")          fxVolume =   0.1 * (float)val;
         else if (cmd == "ECHO_CHAT")       echoChat = (integer)val;
         else if (cmd == "REZ_POSITION")    rezzPosition = (vector)val;
         else if (cmd == "SENSOR_DISTANCE") radius = (integer)val;   // How far to look for products e.g. food
@@ -424,7 +422,7 @@ setConfig(string line)
         else if (cmd == "EAT_INTERVAL")
         {
             timeRate = (integer)val;
-            if (timeRate <10) timeRate = 10;
+            if (timeRate <15) timeRate = 15;
         }
         else if (cmd == "BASE_AGE")
         {
@@ -436,7 +434,7 @@ setConfig(string line)
             else if (val == "SIM")
             {
                 baseAge = -1;
-                owner_age_query = llRequestAgentData(ownerID, DATA_BORN);
+                owner_age_query = llRequestAgentData(userID, DATA_BORN);
                 status = "waitAge";
             }
             else
@@ -446,6 +444,8 @@ setConfig(string line)
             }
         }
         llMessageLinked(LINK_SET, useOsExtra, "B_TARGETS|"+SF_PREFIX+"|"+llDumpList2String(targets, "|"), "");
+        // Check for invalid values
+        if ((useEffects == TRUE) && (fxVolume < 0.1)) fxVolume = 0.1;
     }
 }
 
@@ -504,13 +504,14 @@ loadStoredVals()
             echoChat = llList2Integer(descValues, 21);
             statusHudVisible = llList2Integer(descValues, 22);
             kWhStore = llList2Integer(descValues, 23);
-            if (timeRate <1) timeRate = 60;
+            if (timeRate <15) timeRate = 15;
             if (provLocked == TRUE) borderColour = YELLOW; else borderColour = WHITE;
         }
         else
         {
             vals2Desc();
         }
+
     }
 }
 
@@ -568,6 +569,7 @@ loadLanguage(string langCode)
                     else if (cmd == "TXT_CONSUME_INTERVAL") TXT_CONSUME_INTERVAL = val;
                     else if (cmd == "TXT_CURRENT_VALUE")    TXT_CURRENT_VALUE = val;
                     else if (cmd == "TXT_DATA_ERROR")       TXT_DATA_ERROR = val;
+                    else if (cmd == "TXT_DEAD")             TXT_DEAD = val;
                     else if (cmd == "TXT_DEBUG")            TXT_DEBUG = val;
                     else if (cmd == "TXT_DEBUG_VALUES")     TXT_DEBUG_VALUES = val;
                     else if (cmd == "TXT_DRINK_NOW")        TXT_DRINK_NOW = val;
@@ -631,6 +633,7 @@ loadLanguage(string langCode)
                     else if (cmd == "TXT_REZ_BOX")          TXT_REZ_BOX = val;
                     else if (cmd == "TXT_REZ_KWH")          TXT_REZ_KWH = val;
                     else if (cmd == "TXT_REZ_WOOD")         TXT_REZ_WOOD = val;
+                    else if (cmd == "TXT_RIP")              TXT_RIP = val;
                     else if (cmd == "TXT_SCAN_RANGE")       TXT_SCAN_RANGE = val;
                     else if (cmd == "TXT_SCAN")             TXT_SCAN = val;
                     else if (cmd == "TXT_SCANNING")         TXT_SCANNING = val;
@@ -639,6 +642,7 @@ loadLanguage(string langCode)
                     else if (cmd == "TXT_SELECT_INSPECT")   TXT_SELECT_INSPECT = val;
                     else if (cmd == "TXT_SELECT_STORE")     TXT_SELECT_STORE = val;
                     else if (cmd == "TXT_SICK")             TXT_SICK = val;
+                    else if (cmd == "TXT_SLEEPING")         TXT_SLEEPING = val;
                     else if (cmd == "TXT_SPACING_1")        TXT_SPACING_1 = val;
                     else if (cmd == "TXT_SPACING_2")        TXT_SPACING_2 = val;
                     else if (cmd == "TXT_STATUS")           TXT_STATUS = val;
@@ -796,7 +800,7 @@ floatText(string msg, vector colour, integer raw)
                 if (raw == TRUE) llSetText(wasSpaceWrap(msg, "\n", 64) + "\n \n \n ", colour, 1.0); else llSetText(msg + "\n \n \n ", colour, 1.0);
             }
             lastText = msg;
-            if (echoChat == TRUE) llOwnerSay(msg);
+            if (echoChat == TRUE) llRegionSayTo(userID, 0, msg);
             vals2Desc();
         }
     }
@@ -846,7 +850,7 @@ refresh()
     {
         if (AFK == TRUE)
         {
-            if (llGetAgentInfo(ownerID) & AGENT_AWAY == FALSE)
+            if (llGetAgentInfo(userID) & AGENT_AWAY == FALSE)
             {
                 AFK = FALSE;
                 // llStopAnimation("away");
@@ -868,314 +872,323 @@ refresh()
 
     if (active == TRUE)
     {
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)hungry, "HUNGER", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)thirsty, "THIRST", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)drunk, "DRUNK", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)bladder, "BLADDER", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)energy, "ENERGY", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)point, "POINT", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)(100-health), "HEALTH", "");
-        llMessageLinked(LINK_ALL_CHILDREN, (integer)(100-hygiene), "HYGIENE", "");
-        llMessageLinked(LINK_ALL_CHILDREN, llRound(wellbeing/7), "WELLBEING", "");  // wellbeing goes from 0 to 700
-        integer i;
-        string str;
-        integer ts = llGetUnixTime();
-        string sa = "";
-
-        if (ts - lastTs>=timeRate)
+        if (sleeping == FALSE)
         {
-            hungry += (float)(ts - lastTs)/timeRate;
-            thirsty += (float)(ts - lastTs)/timeRate;
+            integer i;
+            string str;
+            integer ts = llGetUnixTime();
+            string sa = "";
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)hungry, "HUNGER", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)thirsty, "THIRST", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)drunk, "DRUNK", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)bladder, "BLADDER", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)energy, "ENERGY", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)point, "POINT", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)(100-health), "HEALTH", "");
+            llMessageLinked(LINK_ALL_CHILDREN, (integer)(100-hygiene), "HYGIENE", "");
+            llMessageLinked(LINK_ALL_CHILDREN, llRound(wellbeing/7), "WELLBEING", "");  // wellbeing goes from 0 to 700
 
-            if ( (hungry > trigLevel) || (thirsty > trigLevel) )
+            if (ts - lastTs>=timeRate)
             {
-                point -= (float)(ts - lastTs)/5.0;
-                if (point < 5) point = 5.0;
-                energy -= 8;
-                if (energy <0) energy =0;
-            }
-            else
-            {
-                float tmpVal = (float)timeRate/4.0;
-                point += (ts-lastTs)/tmpVal;    // Was 15.0, now timeRate/4 so default is 60/4
-                if (point > 100) point = 100.0;
-                if (healthMode == TRUE) bonus += 5;
-                energy -=1;
-            }
+                hungry += (float)(ts - lastTs)/timeRate;
+                thirsty += (float)(ts - lastTs)/timeRate;
 
-            if (drunk > 0)
-            {
-                drunk -= (float)(ts - lastTs)/20.0;
-                if (drunk < 0) drunk = 0.0;
-            }
-
-            health += (float)(ts - lastTs)/(timeRate*healthRate);
-            if (health >100) health = 100.0;
-
-            if (healthMode == TRUE)
-            {
-                hygiene -= (float)(ts - lastTs)/(timeRate*hygieneRate);
-                if (hygiene <0) hygiene = 0.0;
-                if ((health + hygiene) < 100) point -= 0.5;
-
-                bladder += (float)(ts - lastTs)/(timeRate*bladderRate);
-                if (bladder >100) bladder = 100.0;
-                if (bladder > 75 ) point -= 1.5;
-            }
-
-            lastTs = ts;
-
-            if (hungry>trigLevel)
-            {
-                sa = "faint";
-                floatText(TXT_EAT_NOW +"\n ", ORANGE, 1);
-                if (hungry>100) hungry = 100;
-                health -=10;  if (health <1) health = 1;
-            }
-            else if (hungry<5)
-            {
-                if (hungry <0) hungry = 0;
-            }
-            if (thirsty>trigLevel)
-            {
-                sa = "faint";
-                floatText(TXT_DRINK_NOW +"\n ", ORANGE, 1);
-                if (thirsty >100) thirsty = 100;
-                health -=10;  if (health <1) health = 1;
-            }
-            else if (thirsty < 0)
-            {
-                thirsty = 0;
-            }
-            if (drunk>90)
-            {
-                sa = "drunk";
-                floatText(TXT_LESS_BOOZE +"\n ", TEAL, 1);
-                health -=10;  if (health <1) health = 1;
-            }
-            else
-            {
-                if (drunk < 0) drunk=0;
-            }
-
-            if (health <25)
-            {
-                sa = "sick";
-                floatText(TXT_YOU_ARE_SICK +"\n ", OLIVE, 1);
-            }
-
-            if (bladder >90)
-            {
-                floatText(TXT_VISIT_LAVATORY +"\n ", OLIVE, 1);
-            }
-
-            if (point > 99)
-            {
-                // Reset point count & give energy
-                point = 0.0;
-                energy += 25;
-                if ((MY_HUD == TRUE))
+                if ( (hungry > trigLevel) || (thirsty > trigLevel) )
                 {
-                    integer award = 2;
-                    if (bonus >99)
-                    {
-                        award += 2;
-                        bonus = 0;
-                        energy +=5;
-                    }
-                    if (usePoints == TRUE)
-                    {
-                        // Do a jolly animation
-                        llMessageLinked(LINK_THIS, award, "CMD_PLUSPNT", ownerID);
-                        startAnim(wealthAnim);
-                        if (useEffects == TRUE) llPlaySound(xpSound, 1.0);
-                        llSleep(2);
-                        startAnim("");
-                    }
-                }
-                if (energy >100) energy = 100;
-                refresh();
-                floatText(TXT_REQUESTING_INFO +"\n ", ORANGE, 1);
-                if ((lastNetCheck == "animals") || (lastNetCheck == ""))
-                {
-                    postMessage("task=VER-REQ&ncname="+values_nc, cardsServerURL);
-                    status = "waitvaluesver";
+                    point -= (float)(ts - lastTs)/5.0;
+                    if (point < 5) point = 5.0;
+                    energy -= 8;
+                    if (energy <0) energy =0;
                 }
                 else
                 {
-                    postMessage("task=VER-REQ&ncname="+animals_nc, cardsServerURL);
-                    status = "waitanimalsver";
+                    float tmpVal = (float)timeRate/4.0;
+                    point += (ts-lastTs)/tmpVal;    // Was 15.0, now timeRate/4 so default is 60/4
+                    if (point > 100) point = 100.0;
+                    if (healthMode == TRUE) bonus += 5;
+                    energy -=1;
                 }
-                llSetTimerEvent(30);
-            }
-        }
-        if (ts - alertTs > 29)
-        {
-            if (sa == "faint")
-            {
-                startAnim(faintAnim);
-                llSetTimerEvent(3.0);
-            }
-            else if (sa == "sick")
-            {
-                startAnim(sickAnim);
-                llSetTimerEvent(3.0);
-            }
-            else if (sa == "drunk")
-            {
-                startAnim(drunkAnim);
-                llSetTimerEvent(3.0);
-            }
-            else
-            {
-                startAnim("");
-            }
-            alertTs = ts;
-        }
 
-        if (hungry > trigLevel || thirsty > trigLevel || drunk > trigLevel || health < trigLevel)
-        {
-            str = "";
-            if (ts - alertTs > 50)
-            {
-                if (hungry > trigLevel)
+                if (drunk > 0)
                 {
-                    str += TXT_HUNGRY+" " +(string)llRound(hungry)+"%\n";
+                    drunk -= (float)(ts - lastTs)/20.0;
+                    if (drunk < 0) drunk = 0.0;
                 }
-                if (thirsty > trigLevel)
+
+                health += (float)(ts - lastTs)/(timeRate*healthRate);
+                if (health >100) health = 100.0;
+
+                if (healthMode == TRUE)
                 {
-                str += TXT_THIRSTY+" " +(string)llRound(thirsty)+"%\n";
+                    hygiene -= (float)(ts - lastTs)/(timeRate*hygieneRate);
+                    if (hygiene <0) hygiene = 0.0;
+                    if ((health + hygiene) < 100) point -= 0.5;
+
+                    bladder += (float)(ts - lastTs)/(timeRate*bladderRate);
+                    if (bladder >100) bladder = 100.0;
+                    if (bladder > 75 ) point -= 1.5;
                 }
-                if (drunk > trigLevel)
+
+                lastTs = ts;
+
+                if (hungry>trigLevel)
                 {
-                    str += TXT_DRUNK+" " +(string)llRound(drunk)+"%\n";
+                    sa = "faint";
+                    floatText(TXT_EAT_NOW +"\n ", ORANGE, 1);
+                    if (hungry>100) hungry = 100;
+                    health -=10;  if (health <1) health = 1;
                 }
-                if (health < trigLevel)
+                else if (hungry<5)
                 {
-                    str += TXT_HEALTH+" " +(string)llRound(health)+"%";
+                    if (hungry <0) hungry = 0;
                 }
-                str += "\n ";
-                floatText(str, ORANGE, 1);
-            }
-            alertTs = ts;
-        }
-
-        hungry = checkPercent(hungry);
-        thirsty = checkPercent(thirsty);
-        drunk = checkPercent(drunk);
-        health = checkPercent(health);
-        hygiene = checkPercent(hygiene);
-        bladder = checkPercent(bladder);
-        energy = checkPercent(energy);
-        point = checkPercent(point);
-        // wellbeing goes from 0 to 700
-        if (wellbeing >700) wellbeing =700; if (wellbeing <0) wellbeing =0;
-
-        vals2Desc();
-        if (indicatorKey != NULL_KEY)
-        {
-            vector txtColour = OLIVE;
-            string spacing = "\n";
-            if (hudSpacing == 2) spacing = "\n \n";
-
-            str = TXT_HUNGRY + ": " +llRound(hungry) + "%\t" + TXT_THIRSTY +": " +llRound(thirsty) +"%" +spacing;
-
-            if (healthMode == 0)
-            {
-                str += TXT_HEALTH +": "+(string)llRound(health)+"%\n";
-            }
-            else
-            {
-                wellbeing = llRound(hungry +thirsty +drunk +bladder +(100-hygiene) +(100-health) +(100-energy));  // 0 is perfect wellbeing, 700 dead!
-                if (hygiene < 60) wellbeing += 50;
-                if (health < 50) wellbeing += 50;
-                if (bladder > 50) wellbeing += 50;
-                if (energy <10) wellbeing += 50;
-                if (hungry > 75) wellbeing += 50;
-                if (thirsty > 75) wellbeing += 50;
-                debug("Hygiene="+llRound(hygiene) +": Bladder="+llRound(bladder) +" : Health="+llRound(health) +" : Drunk="+llRound(drunk) +" : Energy="+llRound(energy) +"\nWellbeing="+ (string)wellbeing);
-                if (AFK == FALSE)
+                if (thirsty>trigLevel)
                 {
-                    if (OOC == TRUE) str = "## " +TXT_OOC + " ##" +spacing + str;
-                    str += TXT_BLADDER +": " +llRound(bladder) +"\t";
-                    str += TXT_HYGIENE +": " +llRound(hygiene) +"%"+spacing;
-                    str += TXT_HEALTH  +": " +llRound(health)  +"\t";
-                    str += TXT_ENERGY  +": " +llRound(energy) +"%"+spacing;
-                    if (MY_HUD == TRUE)
+                    sa = "faint";
+                    floatText(TXT_DRINK_NOW +"\n ", ORANGE, 1);
+                    if (thirsty >100) thirsty = 100;
+                    health -=10;  if (health <1) health = 1;
+                }
+                else if (thirsty < 0)
+                {
+                    thirsty = 0;
+                }
+                if (drunk>90)
+                {
+                    sa = "drunk";
+                    floatText(TXT_LESS_BOOZE +"\n ", TEAL, 1);
+                    health -=10;  if (health <1) health = 1;
+                }
+                else
+                {
+                    if (drunk < 0) drunk=0;
+                }
+
+                if (health <25)
+                {
+                    sa = "sick";
+                    floatText(TXT_YOU_ARE_SICK +"\n ", OLIVE, 1);
+                }
+
+                if (bladder >90)
+                {
+                    floatText(TXT_VISIT_LAVATORY +"\n ", OLIVE, 1);
+                }
+
+                if (point > 99)
+                {
+                    // Reset point count & give energy
+                    point = 0.0;
+                    energy += 25;
+                    if ((MY_HUD == TRUE))
                     {
-                        if (userXP != -1) str += TXT_XP +": " +(string)userXP+"\t \t"; else str += TXT_XP +": ~\t \t";
+                        integer award = 2;
+                        if (bonus >99)
+                        {
+                            award += 2;
+                            bonus = 0;
+                            energy +=5;
+                        }
+                        if (usePoints == TRUE)
+                        {
+                            // Do a jolly animation
+                            llMessageLinked(LINK_THIS, award, "CMD_PLUSPNT", userID);
+                            startAnim(wealthAnim);
+                            if (useEffects == TRUE) llPlaySound(xpSound, fxVolume);
+                            llSleep(2);
+                            startAnim("");
+                        }
+                    }
+                    if (energy >100) energy = 100;
+                    refresh();
+                    floatText(TXT_REQUESTING_INFO +"\n ", ORANGE, 1);
+                    if ((lastNetCheck == "animals") || (lastNetCheck == ""))
+                    {
+                        postMessage("task=VER-REQ&ncname="+values_nc, cardsServerURL);
+                        status = "waitvaluesver";
                     }
                     else
                     {
-                        str += "\t ";
+                        postMessage("task=VER-REQ&ncname="+animals_nc, cardsServerURL);
+                        status = "waitanimalsver";
                     }
-                    integer wellDispNum = (integer)(100 - (wellbeing/7) );
-                    string indy = "*";
-                    if (wellDispNum <85) indy = "+";
-                    if (wellDispNum <65) indy = "-";
-                    if (wellDispNum <40) indy = ".";
-                    str += llToUpper(TXT_WELLBEING) +" " +(string)wellDispNum +"% " +indy;
-                    if (wellbeing >675)
-                    {
-                        txtColour = BLACK;
-                        if (wellbeing >695)
-                        {
-                            if (isDead == FALSE)
-                            {
-                                llStopAnimation(curAnim);
-                                startAnim(deadAnim);
-                                if (allowDeath == TRUE)
-                                {
-                                    isDead = TRUE;
-                                    str = "\n \n"+TXT_DEAD+"\t"+TXT_RIP+"\t"+TXT_DEAD+"\n  \n ";
-                                    floatText(str, RED, 1);
-                                    llSleep(5);
-                                    if (MY_HUD == TRUE) llTeleportAgentHome(ownerID);
-                                    state Dead;
-                                }
-                                else
-                                {
-                                    systemReset();
-                                }
-                            }
-                        }
-                    }
-                    if ((hygiene < 50) || (health < 60) || (bladder > 75) || (energy <5) || (hungry > 85) || (thirsty > 85) || (wellbeing > 650)) txtColour = RED;
-                     else if ((hygiene < 60) || (health < 50) || (bladder > 50) || (energy <10) || (hungry > 75) || (thirsty > 75) || (wellbeing > 500)) txtColour = ORANGE;
-                     else if ((hygiene < 70) || (health < 40) || (bladder > 40) || (energy <25) || (hungry > 50) || (thirsty > 50) || (wellbeing > 250)) txtColour = YELLOW;
-                     else if ((hygiene < 80) || (health < 30) || (bladder > 25) || (energy <50) || (hungry > 35) || (thirsty > 35) || (wellbeing > 100)) txtColour = TEAL;
-                    else txtColour = GREEN;
-                    if (ts - alertTs > 40)
-                    {
-                        if (wellbeing > 600)
-                        {
-                            if (curAnim != sickAnim)
-                            {   startAnim(sickAnim);
-                                //llSleep(5);
-                                startAnim("");
-                                curAnim = sickAnim;
-                            }
-                        }
-                        else if (wellbeing > 330)
-                        {
-                            if (curAnim != faintAnim)
-                            {   startAnim(faintAnim);
-                                //llSleep(5);
-                                startAnim("");
-                                curAnim = faintAnim;
-                            }
-                        }
-                        alertTs = ts;
-                    }
+                    llSetTimerEvent(30);
+                }
+            }
+
+            if (ts - alertTs > 29)
+            {
+                if (sa == "faint")
+                {
+                    startAnim(faintAnim);
+                    llSetTimerEvent(3.0);
+                }
+                else if (sa == "sick")
+                {
+                    startAnim(sickAnim);
+                    llSetTimerEvent(3.0);
+                }
+                else if (sa == "drunk")
+                {
+                    startAnim(drunkAnim);
+                    llSetTimerEvent(3.0);
                 }
                 else
                 {
-                    str = "**  " +TXT_AFK + "  **";
-                    txtColour = PURPLE;
-                    floatText(str, PURPLE, 1);
+                    startAnim("");
                 }
+                alertTs = ts;
             }
-            updateIndicator(str, txtColour);
+
+            if (hungry > trigLevel || thirsty > trigLevel || drunk > trigLevel || health < trigLevel)
+            {
+                str = "";
+                if (ts - alertTs > 50)
+                {
+                    if (hungry > trigLevel)
+                    {
+                        str += TXT_HUNGRY+" " +(string)llRound(hungry)+"%\n";
+                    }
+                    if (thirsty > trigLevel)
+                    {
+                    str += TXT_THIRSTY+" " +(string)llRound(thirsty)+"%\n";
+                    }
+                    if (drunk > trigLevel)
+                    {
+                        str += TXT_DRUNK+" " +(string)llRound(drunk)+"%\n";
+                    }
+                    if (health < trigLevel)
+                    {
+                        str += TXT_HEALTH+" " +(string)llRound(health)+"%";
+                    }
+                    str += "\n ";
+                    floatText(str, ORANGE, 1);
+                }
+                alertTs = ts;
+            }
+
+            hungry = checkPercent(hungry);
+            thirsty = checkPercent(thirsty);
+            drunk = checkPercent(drunk);
+            health = checkPercent(health);
+            hygiene = checkPercent(hygiene);
+            bladder = checkPercent(bladder);
+            energy = checkPercent(energy);
+            point = checkPercent(point);
+            // wellbeing goes from 0 to 700
+            if (wellbeing >700) wellbeing =700; if (wellbeing <0) wellbeing =0;
+
+            vals2Desc();
+            if (indicatorKey != NULL_KEY)
+            {
+                vector txtColour = OLIVE;
+                string spacing = "\n";
+                if (hudSpacing == 2) spacing = "\n \n";
+
+                str = TXT_HUNGRY + ": " +llRound(hungry) + "%\t" + TXT_THIRSTY +": " +llRound(thirsty) +"%" +spacing;
+
+                if (healthMode == 0)
+                {
+                    str += TXT_HEALTH +": "+(string)llRound(health)+"%\n";
+                }
+                else
+                {
+                    wellbeing = llRound(hungry +thirsty +drunk +bladder +(100-hygiene) +(100-health) +(100-energy));  // 0 is perfect wellbeing, 700 dead!
+                    if (hygiene < 60) wellbeing += 50;
+                    if (health < 50) wellbeing += 50;
+                    if (bladder > 50) wellbeing += 50;
+                    if (energy <10) wellbeing += 50;
+                    if (hungry > 75) wellbeing += 50;
+                    if (thirsty > 75) wellbeing += 50;
+                    debug("Hygiene="+llRound(hygiene) +": Bladder="+llRound(bladder) +" : Health="+llRound(health) +" : Drunk="+llRound(drunk) +" : Energy="+llRound(energy) +"\nWellbeing="+ (string)wellbeing);
+                    if (AFK == FALSE)
+                    {
+                        if (OOC == TRUE) str = "## " +TXT_OOC + " ##" +spacing + str;
+                        str += TXT_BLADDER +": " +llRound(bladder) +"\t";
+                        str += TXT_HYGIENE +": " +llRound(hygiene) +"%"+spacing;
+                        str += TXT_HEALTH  +": " +llRound(health)  +"\t";
+                        str += TXT_ENERGY  +": " +llRound(energy) +"%"+spacing;
+                        if (MY_HUD == TRUE)
+                        {
+                            if (userXP != -1) str += TXT_XP +": " +(string)userXP+"\t \t"; else str += TXT_XP +": ~\t \t";
+                        }
+                        else
+                        {
+                            str += "\t ";
+                        }
+                        integer wellDispNum = (integer)(100 - (wellbeing/7) );
+                        string indy = "*";
+                        if (wellDispNum <85) indy = "+";
+                        if (wellDispNum <65) indy = "-";
+                        if (wellDispNum <40) indy = ".";
+                        str += llToUpper(TXT_WELLBEING) +" " +(string)wellDispNum +"% " +indy;
+                        if (wellbeing >675)
+                        {
+                            txtColour = BLACK;
+                            if (wellbeing >695)
+                            {
+                                if (isDead == FALSE)
+                                {
+                                    llStopAnimation(curAnim);
+                                    startAnim(deadAnim);
+                                    if (allowDeath == TRUE)
+                                    {
+                                        isDead = TRUE;
+                                        str = "\n \n"+TXT_DEAD+"\t"+TXT_RIP+"\t"+TXT_DEAD+"\n  \n ";
+                                        floatText(str, RED, 1);
+                                        llSleep(5);
+                                        if (MY_HUD == TRUE) llTeleportAgentHome(userID);
+                                        state Dead;
+                                    }
+                                    else
+                                    {
+                                        systemReset();
+                                    }
+                                }
+                            }
+                        }
+                        if ((hygiene < 50) || (health < 60) || (bladder > 75) || (energy <5) || (hungry > 85) || (thirsty > 85) || (wellbeing > 650)) txtColour = RED;
+                         else if ((hygiene < 60) || (health < 50) || (bladder > 50) || (energy <10) || (hungry > 75) || (thirsty > 75) || (wellbeing > 500)) txtColour = ORANGE;
+                         else if ((hygiene < 70) || (health < 40) || (bladder > 40) || (energy <25) || (hungry > 50) || (thirsty > 50) || (wellbeing > 250)) txtColour = YELLOW;
+                         else if ((hygiene < 80) || (health < 30) || (bladder > 25) || (energy <50) || (hungry > 35) || (thirsty > 35) || (wellbeing > 100)) txtColour = TEAL;
+                        else txtColour = GREEN;
+                        if (ts - alertTs > 40)
+                        {
+                            if (wellbeing > 600)
+                            {
+                                if (curAnim != sickAnim)
+                                {   startAnim(sickAnim);
+                                    //llSleep(5);
+                                    startAnim("");
+                                    curAnim = sickAnim;
+                                }
+                            }
+                            else if (wellbeing > 330)
+                            {
+                                if (curAnim != faintAnim)
+                                {   startAnim(faintAnim);
+                                    //llSleep(5);
+                                    startAnim("");
+                                    curAnim = faintAnim;
+                                }
+                            }
+                            alertTs = ts;
+                        }
+                    }
+                    else
+                    {
+                        str = "**  " +TXT_AFK + "  **";
+                        txtColour = PURPLE;
+                        floatText(str, PURPLE, 1);
+                    }
+                }
+                updateIndicator(str, txtColour);
+            }
+        }
+        else
+        {
+            // sleeping
+            updateIndicator(TXT_SLEEPING, PURPLE);
         }
     }
     else
@@ -1193,7 +1206,7 @@ provisionsMenu()
     opts += TXT_FOOD;
     opts += TXT_DRINK;
     startListen();
-    llDialog(ownerID, "\n" +TXT_PROVISIONS_BOX +"\n \n" + TXT_WHAT_USE , opts, chan(llGetKey()));
+    llDialog(userID, "\n" +TXT_PROVISIONS_BOX +"\n \n" + TXT_WHAT_USE , opts, chan(llGetKey()));
     llSetTimerEvent(300);
     if (status == "provMenu") status = "waitProvType"; else status = "waitProvTypeRez";
 }
@@ -1320,7 +1333,7 @@ integer handleValues(list tok, integer consume, integer apply)
         else if (data == "QXP")
         {
             // credit/debit them XP
-            llMessageLinked(LINK_THIS, llList2Integer(tok, n+1), "CMD_PLUSPNT", ownerID);
+            llMessageLinked(LINK_THIS, llList2Integer(tok, n+1), "CMD_PLUSPNT", userID);
             valueUserXP += llList2Integer(tok, n+1);
             ret ++;
         }
@@ -1418,7 +1431,7 @@ showNutritionInfo()
     list tmpLst;
     list ltok = llParseString2List(osGetNotecard(user_nc ), ["\n"], []);
     integer l;
-    llOwnerSay("----------- " +TXT_NUTRITION +" -----------");
+    llRegionSayTo(userID, 0, "----------- " +TXT_NUTRITION +" -----------");
     for (l=0; l < llGetListLength(ltok); l++)
     {
         string line = llList2String(ltok, l);
@@ -1431,7 +1444,7 @@ showNutritionInfo()
             llSleep(0.1);
         }
     }
-    llOwnerSay("__");
+    llRegionSayTo(userID, 0, "__");
     ltok = llParseString2List(osGetNotecard(values_nc ), ["\n"], []);
     for (l=0; l < llGetListLength(ltok); l++)
     {
@@ -1509,7 +1522,7 @@ showStoreLevels()
     str += SF_KWH+": "+(string)llRound(kWhStore)+" "+TXT_UNITS + "\n";
     floatText(str+"\n ", WHITE, 0);
     string data2 = (string)llRound(foodStore)+";"+(string)llRound(drinkStore)+";"+(string)llRound(boozeStore)+";"+(string)llRound(medicineStore)+";"+(string)llRound(woodStore)+";"+(string)llRound(kWhStore)+";"+pubKey+";"+privKey;
-    llMessageLinked(LINK_SET, 1, "CMD_POST|"+"task=saveprovs&data1="+(string)ownerID+"&data2="+data2, "");
+    llMessageLinked(LINK_SET, 1, "CMD_POST|"+"task=saveprovs&data1="+(string)userID+"&data2="+data2, "");
     llSleep(2.0);
 }
 
@@ -1572,6 +1585,7 @@ systemReset()
     medicineStore = 0;
     woodStore = 0;
     kWhStore = 0;
+    timeRate = 90;
     provLocked =FALSE;
     borderColour = WHITE;
     llSleep(0.1);
@@ -1625,9 +1639,10 @@ startUp()
     PASSWORD = llStringTrim(osGetNotecard("sfp"), STRING_TRIM);
     animals = getAnimalList();
     animals = ["DEAD"] + animals;
-    ownerID = llGetOwner();
+    userID = llGetOwner();
     active = TRUE;
     listenerFarm = llListen(FARM_CHANNEL, "", "", "");
+    if (llGetObjectDesc() == "---") systemReset();
     loadConfig();
     loadStoredVals();
     loadLanguage(languageCode);
@@ -1647,8 +1662,10 @@ startUp()
     llMessageLinked(LINK_SET, 1, "STARTUP", "");
     txt_off();
     llMessageLinked(LINK_SET, 0, "CMD_DEBUG|" +(string)DEBUGMODE ,"");
-    checkIndicator(INDHUDNAME);
-    llMessageLinked(LINK_SET, useEffects, "CMD_CHATTY", "");
+    if (checkIndicator(INDHUDNAME) == TRUE)  messageObj(indicatorKey, "VISIBILITY|" +PASSWORD+ "|"+(string)statusHudVisible);
+
+    integer i = llRound(fxVolume*10);
+    llMessageLinked(LINK_SET, useEffects, "CMD_CHATTY|"+(string)i, "");
     if (MY_HUD == FALSE)
     {
         mainTarget = llList2String(targets, 0);
@@ -1656,7 +1673,7 @@ startUp()
         llMessageLinked(LINK_SET, result, "CRITTER_STATUS", "");
         if (result == 0) llMessageLinked(LINK_SET, 1, "SEEK_SURFACE|"+SF_PREFIX +" "+mainTarget, "");
     }
-    if (llGetAttached() != 0) llRequestPermissions(ownerID, PERMISSION_TRIGGER_ANIMATION); //asks the owner's permission to do animations
+    if (llGetAttached() != 0) llRequestPermissions(userID, PERMISSION_TRIGGER_ANIMATION); //asks the owner's permission to do animations
     //
     alertTs = llGetUnixTime();
     llSetTimerEvent(2);
@@ -1668,17 +1685,17 @@ doTouch(key toucher)
     string tmpStr = "";
     list opts = [];
 
-    if (safetyCheck == FALSE)
+    if (llDetectedLinkNumber(0) == getLinkNum("Screen"))
     {
-        checkIndicator(INDHUDNAME);
-        if (llSameGroup(ownerID) == FALSE) floatText("\n" + TXT_CAUTION +"\n \n" +TXT_REATTACH +"\n \n", YELLOW, 1);
+        txt_off();
+    }
+    else
+    {
+        if (safetyCheck == FALSE)
+        {
+            checkIndicator(INDHUDNAME);
+            if (llSameGroup(userID) == FALSE) floatText("\n" + TXT_CAUTION +"\n \n" +TXT_REATTACH +"\n \n", YELLOW, 1);
 
-        if (llDetectedLinkNumber(0) == getLinkNum("Screen"))
-        {
-            txt_off();
-        }
-        else
-        {
             checkListen(TRUE);
             if (active == TRUE)
             {
@@ -1711,14 +1728,15 @@ doTouch(key toucher)
             tmpStr += "\t"+TXT_MODE +": ";
             if (useEffects == TRUE) tmpStr += TXT_EFFECTS +": " +TXT_ON; else tmpStr += TXT_EFFECTS +": " +TXT_OFF;
         }
+        else
+        {
+            opts = TXT_RESET;
+        }
+        userID = toucher;
+        startListen();
+        llDialog(userID, "\n"+TXT_MENU_MAIN+" - "+NAME+"\n \n" +tmpStr, opts, chan(llGetKey()));
+        llSetTimerEvent(180);
     }
-    else
-    {
-        opts = TXT_RESET;
-    }
-    startListen();
-    llDialog(toucher, "\n"+TXT_MENU_MAIN+" - "+NAME+"\n \n" +tmpStr, opts, chan(llGetKey()));
-    llSetTimerEvent(180);
 }
 
 
@@ -1741,8 +1759,7 @@ default
                 floatText(TXT_SEASON_CHANGE + " " + item, PURPLE, 1);
                 return;
             }
-
-            if (item == "INDICATOR_HELLO")
+            else if (item == "INDICATOR_HELLO")
             {
                 indicatorKey = id;
                 llSay(FARM_CHANNEL, "PING|" +PASSWORD +"|QSFHUD|" +(string)llGetOwner());
@@ -1750,7 +1767,7 @@ default
             }
             else if (item == "INDICATOR_INIT")
             {
-                if (llList2Key(cmd, 1) == ownerID)
+                if (llList2Key(cmd, 1) == userID)
                 {
                     messageObj(indicatorKey, "INIT|" + PASSWORD + "|"+(string)llGetKey());
                     llMessageLinked(LINK_ALL_CHILDREN, 0, "COMMS|INDICATOR|1", "");
@@ -1768,31 +1785,31 @@ default
             // These commands need valid password
             if (llList2String(cmd,1) != PASSWORD)
             {
-                llOwnerSay("listen_event: " + TXT_BAD_PASSWORD + " |" +item +"|  ID:" +(string)id);
+                llRegionSayTo(userID, 0, "listen_event: " + TXT_BAD_PASSWORD + " |" +item +"|  ID:" +(string)id);
                 return;
             }
 
-            if (((item == "STUNG") && (llList2Key(cmd,2) == ownerID)) == TRUE)
+            if (((item == "STUNG") && (llList2Key(cmd,2) == userID)) == TRUE)
             {
-                if (useEffects == TRUE) llPlaySound(beesSound,1.0); else floatText(TXT_STUNG +"\n ", RED, 1);
+                if (useEffects == TRUE) llPlaySound(beesSound,fxVolume); else floatText(TXT_STUNG +"\n ", RED, 1);
                 health -= 5;
                 showStatus(TXT_HEALTH +": -5");
             }
             else if (item == "PROGRESS")
             {
-                if (llList2Key(cmd, 2) == ownerID) floatText(TXT_PROGRESS +": " +llList2String(cmd, 4) +"%  " +llList2String(cmd, 3) +"\n \n" , YELLOW, 1);
+                if (llList2Key(cmd, 2) == userID) floatText(TXT_PROGRESS +": " +llList2String(cmd, 4) +"%  " +llList2String(cmd, 3) +"\n \n" , YELLOW, 1);
             }
             else if (item == "COINCHK")
             {
-                if (llList2Key(cmd, 2) == ownerID) llMessageLinked(LINK_THIS, 0, "CMD_COIN_CHECK|" +PASSWORD +"|" +(string)ownerID, "");
+                if (llList2Key(cmd, 2) == userID) llMessageLinked(LINK_THIS, 0, "CMD_COIN_CHECK|" +PASSWORD +"|" +(string)userID, "");
             }
             else if (item == "HEALTH")
             {
-                if (llList2Key(cmd, 2) == ownerID)
+                if (llList2Key(cmd, 2) == userID)
                 {
                     if (llList2String(cmd, 3) == "CQ")
                     {
-                        messageObj(id, "HEALTH|" +PASSWORD +"|ENERGY|" +(string)ownerID +"|" + (string)energy);
+                        messageObj(id, "HEALTH|" +PASSWORD +"|ENERGY|" +(string)userID +"|" + (string)energy);
                         return;
                     }
 
@@ -1867,6 +1884,44 @@ default
                 refresh();
                 return;
             }
+            else if (item == "BACKUP-REQ")
+            {
+                if (MY_HUD == TRUE)
+                {
+                    if (llList2Key(cmd, 2) == userID)
+                    {
+                        critterKey = checkAttached(SF_PREFIX+" "+critterName);
+                        if (critterKey != NULL_KEY) messageObj(critterKey, "SEND-STATUSNC|"+PASSWORD+"|"+llList2String(cmd, 3));
+                    }
+                }
+            }
+            else if (item == "RESTORE-REQ")
+            {
+                if (llList2Key(cmd, 2) == llGetOwner())
+                {
+                    if (MY_HUD == TRUE)
+                    {
+                        critterKey = checkAttached(SF_PREFIX+" "+critterName);
+                        if (critterKey != NULL_KEY) messageObj(critterKey, "KILL-STATUSNC|"+PASSWORD+"|"+llList2String(cmd, 3));
+                    }
+                    else
+                    {
+                        updateIndicator(TXT_LOADING_VALUES, PURPLE);
+                    }
+                }
+            }
+            else if (item == "UPGRADE-REQ")
+            {
+                if (MY_HUD == TRUE)
+                {
+                    if (llList2Key(cmd, 2) == userID)
+                    {
+                        critterKey = checkAttached(SF_PREFIX+" "+critterName);
+                        if (critterKey != NULL_KEY)   messageObj(critterKey, "VERSION-CHECK|"+PASSWORD+"|"+llList2String(cmd, 3)   );
+
+                    }
+                }
+            }
         }
         else
         {
@@ -1935,6 +1990,7 @@ default
                 opts += [TXT_CLOSE];
                 if (statusHudVisible == TRUE) opts += "-"+TXT_STATUS_HUD_STATE; else opts +="+"+TXT_STATUS_HUD_STATE;
                 opts += [TXT_STOP_ANIM];
+                if (checkIndicator(INDHUDNAME) == TRUE)  messageObj(indicatorKey, "VISIBILITY|" +PASSWORD+ "|"+(string)statusHudVisible);
                 status = "statusMenu";
                 startListen();
                 llDialog(id, "\n"+TXT_STATUS, opts, chan(llGetKey()));
@@ -1981,7 +2037,7 @@ default
             }
             else if (m == TXT_WEBSITE)
             {
-                llLoadURL(ownerID, TXT_VISIT_WEBSITE, webForumURL);
+                llLoadURL(userID, TXT_VISIT_WEBSITE, webForumURL);
             }
             else if (m == TXT_OPTIONS)
             {
@@ -2052,7 +2108,7 @@ default
                 key result = checkAttached("SF " +TXT_BACKPACK);
                 if (result != NULL_KEY)
                 {
-                    messageObj(result, "CMD_BACKPACK|" +PASSWORD+"|" +(string)ownerID);
+                    messageObj(result, "CMD_BACKPACK|" +PASSWORD+"|" +(string)userID);
                 }
                 else
                 {
@@ -2077,7 +2133,7 @@ default
             }
             else if (m == TXT_RELOAD)
             {
-                llMessageLinked(LINK_SET, 1, "CMD_POST|"+"task=getprovs&data1="+(string)ownerID, "");
+                llMessageLinked(LINK_SET, 1, "CMD_POST|"+"task=getprovs&data1="+(string)userID, "");
             }
             else if (m == TXT_STORE_ITEM)
             {
@@ -2088,19 +2144,19 @@ default
             {
                 if ((foodStore + drinkStore + boozeStore + medicineStore) >0)
                 {
-                    if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                    if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                     llMessageLinked(LINK_SET, provLocked, "REZ_PRODUCT|" +PASSWORD +"|" +(string)id +"|" +"SF "+provBoxName +"|" +llRound(foodStore) +"|" +llRound(drinkStore) +"|" +llRound(boozeStore) +"|" +llRound(medicineStore), pubKey);
                 }
                 else floatText(TXT_NO_PROVISIONS +"\n ", RED, 1);
             }
             else if (m == TXT_REZ_WOOD)
             {
-                if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                 llMessageLinked(LINK_SET, 0, "REZ_PRODUCT|" +PASSWORD +"|" +(string)id +"|" +"SF "+SF_WOOD, NULL_KEY);
             }
             else if (m == TXT_REZ_KWH)
             {
-                if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                 llMessageLinked(LINK_SET, 0, "REZ_PRODUCT|" +PASSWORD +"|" +(string)id +"|" +"SF "+SF_KWH, NULL_KEY);
             }
             else if (m == TXT_LEVELS)
@@ -2175,14 +2231,16 @@ default
             else if (m == "+"+TXT_EFFECTS)
             {
                 useEffects = TRUE;
-                llMessageLinked(LINK_SET, 1, "CMD_CHATTY", "");
+                integer i = llRound(fxVolume*10);
+                llMessageLinked(LINK_SET, 1, "CMD_CHATTY|"+(string)i, "");
                 refresh();
                 floatText(TXT_EFFECTS +": " + TXT_ON +"\n ", WHITE, 1);
             }
             else if (m == "-"+TXT_EFFECTS)
             {
                 useEffects = FALSE;
-                llMessageLinked(LINK_SET, 0, "CMD_CHATTY", "");
+                integer i = llRound(fxVolume*10);
+                llMessageLinked(LINK_SET, 1, "CMD_CHATTY|"+(string)i, "");
                 if (checkIndicator(INDHUDNAME) == TRUE)  messageObj(indicatorKey, "OFF|" +PASSWORD);
                 floatText(TXT_EFFECTS +": " + TXT_OFF +"\n ", WHITE, 1);
                 refresh();
@@ -2191,7 +2249,7 @@ default
             else if (m == TXT_LOCK)
             {
                 provLocked = TRUE;
-                llPlaySound(lockSound, 1.0);
+                llPlaySound(lockSound, fxVolume);
                 borderColour = YELLOW;
                 setBorder(borderColour);
                 vals2Desc();
@@ -2199,7 +2257,7 @@ default
             else if (m == TXT_UNLOCK)
             {
                 provLocked = FALSE;
-                llPlaySound(unlockSound, 1.0);
+                llPlaySound(unlockSound, fxVolume);
                 borderColour = WHITE;
                 setBorder(borderColour);
                 vals2Desc();
@@ -2278,7 +2336,7 @@ default
             }
             else if (m == TXT_INTERACTION)
             {
-                llMessageLinked(LINK_SET, 1, "dotouch", ownerID);
+                llMessageLinked(LINK_SET, 1, "dotouch", id);
             }
             else if (m == critterName)
             {
@@ -2299,7 +2357,7 @@ default
             {
                 status = "";
                 integer tmpVal = (integer)m;
-                if (tmpVal <10) timeRate = 10; else timeRate = tmpVal;
+                if (tmpVal <15) timeRate = 15; else timeRate = tmpVal;
                 refresh();
                 floatText(TXT_CONSUME_INTERVAL +": " +timeRate + "min" +"\n ", PURPLE, 1);
             }
@@ -2401,7 +2459,7 @@ default
                     {
                         foodStore -= 20;
                         hungry -= 20;
-                        if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                        if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                         showStoreLevels();
                     }
                     else
@@ -2415,7 +2473,7 @@ default
                     {
                         drinkStore -= 20;
                         thirsty -= 20;
-                        if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                        if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                         showStoreLevels();
                     }
                     else
@@ -2429,7 +2487,7 @@ default
                     {
                         boozeStore -= 20;
                         drunk += 20;
-                        if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                        if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                         showStoreLevels();
                     }
                     else
@@ -2443,7 +2501,7 @@ default
                     {
                         medicineStore -= 20;
                         health += 20;
-                        if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                        if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                         showStoreLevels();
                     }
                     else
@@ -2457,7 +2515,7 @@ default
             else if (status == "animalListen")
             {
                 floatText("\n --- " + TXT_SCANNING +" " +scanRange + "m " + TXT_RADIUS + "---\n \n", ORANGE, 1);
-                llMessageLinked(LINK_THIS, 1, "CMD_SCAN|" + "SF " + m + "|" + (string)scanRange, ownerID);
+                llMessageLinked(LINK_THIS, 1, "CMD_SCAN|" + "SF " + m + "|" + (string)scanRange, userID);
                 lookingFor = m;
             }
         }
@@ -2498,17 +2556,17 @@ default
 
             if (status == "WaitSearchConsume")
             {
-                llDialog(ownerID,  "\n" +TXT_SELECT_CONSUME, [TXT_CLOSE] + foundList, chan(llGetKey()));
+                llDialog(userID,  "\n" +TXT_SELECT_CONSUME, [TXT_CLOSE] + foundList, chan(llGetKey()));
                 status = "WaitSelectionConsume";
             }
             else if (status == "WaitSearchStore")
             {
-                llDialog(ownerID,  "\n"+TXT_SELECT_STORE, [TXT_CLOSE] + foundList, chan(llGetKey()));
+                llDialog(userID,  "\n"+TXT_SELECT_STORE, [TXT_CLOSE] + foundList, chan(llGetKey()));
                 status = "WaitSelectionStore";
             }
             else
             {
-                llDialog(ownerID,  "\n"+TXT_SELECT_INSPECT, [TXT_CLOSE] + foundList, chan(llGetKey()));
+                llDialog(userID,  "\n"+TXT_SELECT_INSPECT, [TXT_CLOSE] + foundList, chan(llGetKey()));
                 status = "WaitSelectionInspect";
             }
         }
@@ -2779,7 +2837,7 @@ default
                     health += 20;
                     showStatus(TXT_HEALTH +": -20 ");
                 }
-                if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                 refresh();
                 status = "";
             }
@@ -2793,13 +2851,13 @@ default
                 drinkStore += llList2Integer(tk, 3);
                 boozeStore += llList2Integer(tk, 4);
                 medicineStore += llList2Integer(tk, 5);
-                if (useEffects == TRUE) llPlaySound(actionSound, 1.0);
+                if (useEffects == TRUE) llPlaySound(actionSound, fxVolume);
                 showStoreLevels();
                 status = "";
             }
             else
             {
-                llOwnerSay(TXT_BAD_PASSWORD +" : fullProvisionsBox");
+                llRegionSayTo(userID, 0, TXT_BAD_PASSWORD +" : fullProvisionsBox");
                 status = "";
             }
         }
@@ -2876,7 +2934,7 @@ default
                         osMakeNotecard(tmpName,body);    // Create notecard with data from server
                         llSleep(0.5);
                         txt_off();
-                        llGiveInventory(ownerID, tmpName);  // Gives the notecard to the person.
+                        llGiveInventory(userID, tmpName);  // Gives the notecard to the person.
                         llRemoveInventory(tmpName);         // Now remove it as we create fresh each time
                     }
                     status = "";
@@ -2970,6 +3028,20 @@ default
                 state paused;
             }
         }
+
+        else if (cmd == "EXPRESSION")
+        {
+            string expression = llList2String(tk, 1);
+            if (expression == "SLEEP") sleeping = TRUE; else if (expression == "WAKE") sleeping = FALSE;
+        }
+        else if (cmd == "BAG_HERE")
+        {
+            if (critterKey != NULL_KEY) llMessageLinked(LINK_SET, 1, "CRITTER_STATUS", "");
+        }
+        else if ((cmd == "reset") && (num == 666))
+        {
+            llResetScript();
+        }
     }
 
     object_rez(key id)
@@ -2996,10 +3068,18 @@ default
 
     state_entry()
     {
-        txt_off();
-        llSetColor(RED, 4);
-        thisRegion = llGetRegionName();
-        llMessageLinked(LINK_THIS, 1, "DO_OS_CHK", "");
+        // Dont run this script in rezzer
+        if ((llGetInventoryType("rezzer") == INVENTORY_SCRIPT) || (llGetInventoryType("B-rezzer") == INVENTORY_SCRIPT))
+        {
+            llSetScriptState(llGetScriptName(), FALSE);
+        }
+        else
+        {
+            txt_off();
+            llSetColor(RED, 4);
+            thisRegion = llGetRegionName();
+            llMessageLinked(LINK_THIS, 1, "DO_OS_CHK", "");
+        }
     }
 
     on_rez(integer n)
@@ -3018,7 +3098,7 @@ default
         }
         else if(parm & PERMISSION_ATTACH) //triggers animation
         {
-            llOwnerSay("ATTACH OK");
+            //llOwnerSay("ATTACH OK");
         }
     }
 
@@ -3026,7 +3106,7 @@ default
     {
         if ((change & CHANGED_REGION) || (llGetRegionName() != thisRegion))
         {
-            llOwnerSay(thisRegion +"-->" +llGetRegionName());
+            llRegionSayTo(userID, 0, thisRegion +"-->" +llGetRegionName());
             thisRegion = llGetRegionName();
             llResetScript();
         }
@@ -3046,13 +3126,14 @@ default
 
     attach(key id)
     {
-        if (id)     // is a valid key and not NULL_KEY
+        if (id)  // is a valid key and not NULL_KEY
         {
             // we are attached
+            userID = id;
         }
         else
         {
-            llMessageLinked(LINK_SET, 1, "CMD_POST|"+"task=getprovs&data1="+(string)ownerID, "");
+            llMessageLinked(LINK_SET, 1, "CMD_POST|"+"task=getprovs&data1="+(string)userID, "");
             updateIndicator(" ", WHITE);
         }
     }
@@ -3105,7 +3186,7 @@ state Dead
 
     listen(integer c, string nm, key id, string msg)
     {
-        llOwnerSay("DEAD_msg:"+msg);
+        llRegionSayTo(userID, 0, "DEAD_msg:"+msg);
         if (c == FARM_CHANNEL)
         {
             list tk = llParseStringKeepNulls(msg, ["|"] , []);

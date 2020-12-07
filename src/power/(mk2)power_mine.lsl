@@ -1,8 +1,8 @@
 // power_mine.lsl
 //  SF Mine script
 
-float   VERSION = 5.0;    // Beta 4 November 2020
-integer RSTATE  = 0;      // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
+float   VERSION = 5.0;    // Beta 27 November 2020
+integer RSTATE  = 1;      // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 integer DEBUGMODE = FALSE;
 debug(string text)

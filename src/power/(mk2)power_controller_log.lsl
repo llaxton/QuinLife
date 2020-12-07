@@ -4,7 +4,7 @@
 //   Provided under Creative Commons Attribution-Non-Commercial-ShareAlike 4.0 International license.
 //   Please be sure you read and adhere to the terms of this license: https://creativecommons.org/licenses/by-nc-sa/4.0/
 
-float VERSION = 5.0;        // BETA 3 November 2020
+float VERSION = 5.0;        // 27 November 2020
 
 integer DEBUGMODE = FALSE;
 debug(string text)

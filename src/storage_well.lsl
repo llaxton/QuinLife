@@ -2,8 +2,8 @@
 // Universal storage tower/well  for liquid e.g. water to give to items set as 'auto water'
 // Works with wind pump, electric pump or self contained pump
 
-float   VERSION = 5.0;   // Beta 4 November 2020
-integer RSTATE  = 0;     // RSTATE = 1 for release, 0 for beta, -1 for RC
+float   VERSION = 5.1;   // 27 November 2020
+integer RSTATE  = 1;     // RSTATE = 1 for release, 0 for beta, -1 for RC
 
 integer DEBUGMODE = FALSE;
 debug(string text)
@@ -422,7 +422,6 @@ default
         {
             if (wdb == TRUE) llMessageLinked(LINK_SET, 0, "DEBUG", ""); else llMessageLinked(LINK_SET, 1, "DEBUG", "");
             wdb = !(wdb);
-            llOwnerSay("weather debug:"+(string)wdb);
         }
     }
 

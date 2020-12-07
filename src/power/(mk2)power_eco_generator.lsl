@@ -1,8 +1,8 @@
 // power_eco_generator.lsl
 // Generates and adds energy to the region-wide power controller - can be configured for using wind, sun or water
 //
-float   VERSION = 5.0;     // Beta  4 November 2020
-integer  RSTATE = 0;       // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
+float   VERSION = 5.0;     // 27 November 2020
+integer  RSTATE = 1;       // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 
 integer DEBUGMODE = FALSE;
 debug(string text)

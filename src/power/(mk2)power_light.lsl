@@ -1,8 +1,8 @@
 // power_light.lsl
 // Lighting that uses power from the region grid and/or loacal SF kWh
 //
-float   VERSION = 5.0;    // Beta  5 November 2020
-integer RSTATE = 0;       // RSTATE: 1=release, 0=beta, -1=RC
+float   VERSION = 5.0;    // Beta  27 November 2020
+integer RSTATE = 1;       // RSTATE: 1=release, 0=beta, -1=RC
 
 // Can be overidden by config notecard
 integer SHOW_TXT = TRUE;    // SHOW_TXT=

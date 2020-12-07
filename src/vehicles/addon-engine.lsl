@@ -4,7 +4,7 @@
 // First add the notecards  config & sfp
 // Then add this plugin
 
-float VERSION = 1.1;     // 19 November 2020
+float VERSION = 1.1;     // 21 November 2020
 
 integer DEBUGMODE = FALSE;
 debug(string text)
@@ -256,6 +256,7 @@ refresh()
 
 init()
 {
+    llSetText("", ZERO_VECTOR, 0);
     integer index;
     integer count = llGetListLength(avatarIDs);
     for (index = 0 ; index < count; index++)
@@ -268,7 +269,15 @@ init()
     loadConfig();
     loadLanguage(languageCode);
     llSitTarget(sitTarget, ZERO_ROTATION);
-    if (handleTouch == TRUE) llSetTouchText(TXT_MENU); else llMessageLinked(LINK_SET, 1, "ADD_MENU_OPTION|"+TXT_ADD_FUEL, "");
+    if (handleTouch == TRUE)
+    {
+        llSetTouchText(TXT_MENU);
+    }
+    else
+    {
+        llMessageLinked(LINK_SET, 1, "ADD_MENU_OPTION|"+TXT_ADD_FUEL, "");
+        llMessageLinked(LINK_SET, 1, "ADD_MENU_OPTION|"+TXT_FUEL_LEVEL, "");
+    }
     refresh();
 }
 
@@ -285,6 +294,7 @@ default
 
     listen(integer c, string nm, key id, string m)
     {
+        debug("listen:"+m + " ID="+(string)id);
         if (m == TXT_CLOSE)
         {
             refresh();
@@ -473,6 +483,21 @@ default
         {
             doTouch(id);
         }
+        else if (cmd == "MENU_OPTION")
+        {
+            if (llList2String(tk, 1) == TXT_ADD_FUEL)
+            {
+                avatarID = id;
+                status = "WaitSearchSpecific";
+                lookingFor = "all";
+                startListen();
+                llSensor("", "",SCRIPTED,  SENSOR_DISTANCE, PI);
+            }
+            else if (llList2String(tk, 1) == TXT_FUEL_LEVEL)
+            {
+                llRegionSayTo(id, 0, TXT_FUEL_LEVEL +": " +(string)fuel +"%");
+            }
+        }
         else if (cmd == "SET-LANG")
         {
             languageCode = llList2String(tk, 1);
@@ -546,7 +571,8 @@ default
             {
                 if (llToUpper(productName) ==  cmd)
                 {
-                    fuel = 100;
+                    fuel += 50;
+                    if (fuel > 100) fuel = 100;
                     llSay(0, TXT_ADDED +" " +llToLower(cmd) +", " +TXT_LEVEL +" " +(string)fuel+"%");
                     status = "";
                     refresh();

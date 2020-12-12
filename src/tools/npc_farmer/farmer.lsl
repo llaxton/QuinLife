@@ -1,10 +1,12 @@
+// CHANGE LOG 
+//  Added support fot NPC to play sounds - include them as firstName0  firstName1  firstName2   etc up to firstName5 
 // farmer.lsl
 // NPC Farmer for Satyr Farm
 //  Part of the  SatyrFarm scripts.  This code is provided under a CC-BY-NC license
-//  Mods by Cnayl Rainbow, worlds.quintonia.net:8002
+//  Mods by Cnayl Rainbow, hg.osgrid.org:80:mintor
 
 // Used to check for updates from Quintonia product update server
-float VERSION = 4.2;  // 18 August 2020
+float VERSION = 4.3;  // 11 December 2020
 string NAME = "SF Farmer NPC";
 
 integer DEBUGMODE = FALSE;
@@ -15,6 +17,7 @@ debug(string text)
 // Can be overridden by config notecard
 integer AUTO_REZ = 0;
 integer CHATTY = TRUE;
+integer doFX = TRUE;
 integer RADIUS = 90;
 integer ENABLE_COOKING = 1;
 string  COOKED_STORE = "SF Fridge";
@@ -140,6 +143,7 @@ loadConfig()
             if (cmd == "LAST_NAME") lastName = val;
             else if (cmd == "RADIUS") RADIUS = (integer)val;
             else if (cmd == "CHATTY") CHATTY = (integer)val;
+            else if (cmd == "SOUNDS") doFX = (integer)val;
             else if (cmd == "ENABLE_HARVESTING") ENABLE_HARVESTING = (integer)val;
             else if (cmd == "HARVEST_STORE") HARVEST_STORE = val;
             else if (cmd == "ENABLE_COOKING") ENABLE_COOKING = (integer)val;
@@ -292,6 +296,19 @@ anim(string an)
     osNpcPlayAnimation(unpc, lastAnim);
 }
 
+sound()
+{
+    if (doFX == TRUE)
+    {
+        string fn = firstName+(string)llFloor(llFrand(6));
+        fn = llToLower(fn);     
+        if (llGetInventoryType(fn) == INVENTORY_SOUND)
+        {
+            if (llKey2Name(listenerKey) != "") osMessageObject(listenerKey, "TRIGGERSOUND|"+(string)llGetInventoryKey(fn)+ "|1.0");
+        }
+    }
+}
+
 doTouch(key u)
 {
     debug("doTouch:" + (string)u);
@@ -305,7 +322,11 @@ whisper(string w)
 
 say(string w)
 {
-    if (CHATTY == TRUE) osNpcSay(unpc, w);
+    if (CHATTY == TRUE)
+    {
+        osNpcSay(unpc, w);
+    }
+    sound();
 }
 
 chanSay(integer c, string w)
@@ -877,7 +898,13 @@ default
                         handleTree(targetTree);
                     }
                     else
+                    {
                         anim("express_shrug");
+                    }
+                    if (llFrand(1.)<.5) 
+                    {
+                       sound();
+                    }
                 }
                 targetTree = NULL_KEY;
                 llSetTimerEvent(5);

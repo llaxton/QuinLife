@@ -1,7 +1,7 @@
 // power_lighting_bulb.lsl
 // Lighting that uses power from the region grid and/or loacal SF kWh
 //
-float   VERSION = 5.0;    // Beta  5 November 2020
+float   VERSION = 5.1;    // Beta  5 November 2020
 integer RSTATE = -1;      // RSTATE: 1=release, 0=beta, -1=RC
 //
 integer face = 3;

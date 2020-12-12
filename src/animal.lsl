@@ -17,7 +17,7 @@
 // Mods by Cnayl Rainbow, hg.osgrid.org:80:Aquino
 //
 // NOTE: Versions before 4.1 can't be easily upgraded to version 5 due to all sorts of hardware differences
-float    VERSION = 5.6;    // RC    5 December 2020
+float    VERSION = 5.6;    // 5.6-RC-11122020
 integer  RSTATE  = -1;     // RSTATE = 1 for release, 0 for beta, -1 for Release candidate
 //
 integer DEBUGMODE = FALSE;
@@ -640,7 +640,6 @@ setGenes()
             tex = "goat"+(string)geneA+(string)geneB;
         else if (geneB<geneA)
             tex = "goat"+(string)geneB+(string)geneA;
-
         if (MULTI_SKIN == FALSE)
         {
             for (i=0; i < llGetListLength(colorable); i++)
@@ -654,13 +653,14 @@ setGenes()
             // new way  - 'colorable' is list of prim_number,texture_suffix,
             //  15,Tail, 13,BLeg, 14,BLeg, 3,FLeg, 4, FLeg, 12,Torso, 6,Mane, 5,Neck, 7,Face, 10,Ear, 11,Ear
             integer lnk;
+            integer count = llGetListLength(colorable);       
             string texSuffix;
-            for (i=0; i < llGetListLength(colorable); i+=2)
+            for (i = 0; i < count; i+=2)
             {
                 lnk = llList2Integer(colorable, i);
                 texSuffix = llList2String(colorable, i+1);
                 //llSetLinkPrimitiveParamsFast(lnk, [PRIM_TEXTURE, ALL_SIDES, tex+"-"+texSuffix, <1,1,1>, <0, 0, 0> , 0]);
-                llSetLinkPrimitiveParamsFast(lnk, [PRIM_TEXTURE, 1, tex+"-"+texSuffix, <1,1,1>, <0, 0, 0> , 0]);
+                llSetLinkPrimitiveParamsFast(lnk, [PRIM_TEXTURE, ALL_SIDES, tex+"-"+texSuffix, <1,1,1>, <0, 0, 0> , 0]);               
             }
         }
     }
@@ -1373,8 +1373,7 @@ default
         geneA = 1+ (integer)llFrand(3);
         geneB = 1+ (integer)llFrand(3);
         lastTs = createdTs = llGetUnixTime()-200;
-        if (LAYS_EGG) epoch =0;
-        else epoch = 1;
+        if (LAYS_EGG) epoch =0; else epoch = 1;
         lifeTime = (integer) ( (float)LIFETIME*( 1.+llFrand(.1)) );
         //Load state after defaults
         loadState();
@@ -1510,17 +1509,17 @@ default
 
         if ((qlDayCheck() == TRUE) || (SLEEP_MODE == FALSE))
         {
-            if ((isMoving > 0) && (habitat == TRUE))
+            // only make animal walk if not attached to avatar (e.g. baby)
+            if (isAttached == FALSE)
             {
-                if (isMoving == 1)
+                if ((isMoving > 0) && (habitat == TRUE))
                 {
-                    setPose(rest);
-                    llSetTimerEvent(11);
-                }
-                else
-                {
-                    // only make animal walk if not attached to avatar (e.g. baby)
-                    if (isAttached == FALSE)
+                    if (isMoving == 1)
+                    {
+                        setPose(rest);
+                        llSetTimerEvent(11);
+                    }
+                    else
                     {
                         vector cp = llGetPos();
                         vector moveAmount = <STEP_SIZE, 0, 0>*(llGetRot()*llEuler2Rot(<0,0,moveAngle>));
@@ -1546,78 +1545,77 @@ default
                         {
                             v.z = cp.z;
                         }
-
                         if (llVecDist(v, initpos)< RADIUS)
                         {
-                            if (isMoving == 0) setPose(walkl); else setPose(walkr);
+                            left =!left;
+                            if (left)   setPose(walkl);
+                            else    setPose(walkr);
+                            //if (isMoving == 0) setPose(walkl); else setPose(walkr);
                             llSetPrimitiveParams([PRIM_POSITION, v, PRIM_ROTATION, llGetRot()*llEuler2Rot(<0,0,moveAngle>) ]);
-                            debug("okay to move");
                         }
                         else
                         {
                             llSetPrimitiveParams([PRIM_POSITION, cp, PRIM_ROTATION, llGetRot()*llEuler2Rot(<0,0,PI/2>) ]);
-                            debug("not okay to move");
+                        }
+                    }
+                    isMoving--;
+                    return;
+                }
+
+                if (followUser != NULL_KEY)
+                {
+                    list userData=llGetObjectDetails((key)followUser, [OBJECT_NAME,OBJECT_POS, OBJECT_ROT]);
+                    if (llGetListLength(userData)==0)
+                    {
+                        followUser = NULL_KEY;
+                        llSetTimerEvent(1);
+                        return;
+                    }
+                    else
+                    {
+                        vector size = llGetAgentSize(followUser);
+                        vector mypos = llGetPos();
+                        vector v = llList2Vector(userData, 1) + <0.3, 1.5, (-size.z/2)-0.1> * llList2Rot(userData,2);
+                        float d = llVecDist(mypos, v);
+                        if (d>2)
+                        {
+                            vector vn = llVecNorm(v  - mypos );
+                            vector fpos;
+                            if (d>20) fpos = mypos + 2*vn;
+                            else fpos = mypos + .7*vn;
+                            vn.z =0;
+                            rotation r2 = llRotBetween(<1,0,0>,vn);
+                            left = !left;
+                            llSetPrimitiveParams([PRIM_ROTATION,r2, PRIM_POSITION, fpos]);
+                            if (left)   setPose(walkl);
+                            else    setPose(walkr);
+                            if (llFrand(1.)< 0.1) baah();
+                            initpos = fpos;
                         }
                     }
                 }
-                isMoving--;
-                return;
-            }
-            if (followUser != NULL_KEY)
-            {
-                list userData=llGetObjectDetails((key)followUser, [OBJECT_NAME,OBJECT_POS, OBJECT_ROT]);
-                if (llGetListLength(userData)==0)
+                integer ts = llGetUnixTime();
+                if (ts > lastTs + 100)
                 {
-                    followUser = NULL_KEY;
-                    llSetTimerEvent(1);
-                    return;
+                    refresh();
+                    lastTs = ts;
                 }
+                if (epoch == 0)  llSetTimerEvent(300);
                 else
                 {
-                    vector size = llGetAgentSize(followUser);
-                    vector mypos = llGetPos();
-llOwnerSay("size.z="+(string)size.z);
-                    vector v = llList2Vector(userData, 1) + <0.3, 1.5, -size.z/2-0.1> * llList2Rot(userData,2);
-
-                    float d = llVecDist(mypos, v);
-                    if (d>2)
+                    if (status == "DEAD")
                     {
-                        vector vn = llVecNorm(v  - mypos );
-                        vector fpos;
-                        if (d>20) fpos = mypos + 2*vn;
-                        else fpos = mypos + .7*vn;
-                        vn.z =0;
-                        rotation r2 = llRotBetween(<1,0,0>,vn);
-                        left = !left;
-                        llSetPrimitiveParams([PRIM_ROTATION,r2, PRIM_POSITION, fpos]);
-                        if (left)   setPose(walkl);
-                        else    setPose(walkr);
-                        if (llFrand(1.)< 0.1) baah();
-                        initpos = fpos;
+                        llSetTimerEvent(0);
+                        return;
+                    }
+                    else if (followUser == NULL_KEY)
+                    {
+                        if (isHuman == TRUE) llSetTimerEvent(llFrand(10)); else llSetTimerEvent(lifeFactor+ (integer)llFrand(20));
+                        move();
                     }
                 }
+                checkListen();
             }
-            integer ts = llGetUnixTime();
-            if (ts > lastTs + 100)
-            {
-                refresh();
-                lastTs = ts;
-            }
-            if (epoch == 0)  llSetTimerEvent(300);
-            else
-            {
-                if (status == "DEAD")
-                {
-                    llSetTimerEvent(0);
-                    return;
-                }
-                else if (followUser == NULL_KEY)
-                {
-                    if (isHuman == TRUE) llSetTimerEvent(llFrand(10)); else llSetTimerEvent(lifeFactor+ (integer)llFrand(20));
-                    move();
-                }
-            }
-            checkListen();
         }
         else
         {
